@@ -2,7 +2,7 @@
   "expo": {
     "name": "SurfPlace",
     "slug": "surfplace",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "orientation": "portrait",
     "scheme": "surfplace",
     "userInterfaceStyle": "light",
@@ -30,7 +30,15 @@
         {
           "locationWhenInUsePermission": "SurfPlace uses your location once, when you tap NEAR ME, to find the closest surf beach. Your location stays on this phone."
         }
-      ]
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false
+        }
+      ],
+      "expo-font",
+      "expo-asset"
     ],
     "owner": "solomonsasson",
     "extra": {
