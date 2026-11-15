@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "SurfPlace",
+    "slug": "surfplace",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "surfplace",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#1e9bd7",
+    "icon": "./assets/icon.png",
+    "ios": {
+      "bundleIdentifier": "com.solyapps.surfplace",
+      "supportsTablet": false,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocationWhenInUseUsageDescription": "SurfPlace uses your location once, when you tap NEAR ME, to find the closest surf beach. Your location stays on this phone."
+      }
+    },
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#1e9bd7",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 180
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "SurfPlace uses your location once, when you tap NEAR ME, to find the closest surf beach. Your location stays on this phone."
+        }
+      ]
+    ],
+    "owner": "solomonsasson",
+    "extra": {
+      "eas": {
+        "projectId": "359e46ed-533a-4d20-977d-dccd5db776cf"
+      }
+    }
+  }
+}

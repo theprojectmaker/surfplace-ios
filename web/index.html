@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SurfPlace</title>
+<meta name="description" content="All the surf knowledge you need in one app.">
+<meta name="theme-color" content="#1e9bd7">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="SurfPlace">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 8 8%27 shape-rendering=%27crispEdges%27%3E%3Crect width=%278%27 height=%278%27 fill=%27%23ffd23f%27/%3E%3Cpath d=%27M0 8V5h1V3h1V2h3v1h1v1H4v1H3v1h5v2z%27 fill=%27%231e9bd7%27/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vendor/leaflet.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+
+  <header class="top">
+    <canvas id="logo" width="16" height="16" aria-hidden="true"></canvas>
+    <div>
+      <h1>SURFPLACE</h1>
+      <p class="motto">All the surf knowledge you need in one app</p>
+    </div>
+  </header>
+
+  <!-- ============ FORECAST ============ -->
+  <section id="tab-forecast" class="tab">
+    <div class="spotbar">
+      <button id="favBtn" class="fav" aria-label="Save this beach" aria-pressed="false"></button>
+      <button id="spotBtn" class="spot" data-go="map">
+        <span class="spot-text">
+          <span id="spotName" class="spot-name">Loading...</span>
+          <span id="spotRegion" class="spot-region"></span>
+        </span>
+        <span class="spot-change">CHANGE</span>
+      </button>
+    </div>
+    <div id="favs" class="favs" hidden></div>
+
+    <p id="status" class="status">Checking the ocean...</p>
+
+    <div id="report" hidden>
+      <div id="hero" class="hero">
+        <div class="hero-top">
+          <span id="heroWhen" class="hero-when">TODAY</span>
+          <span class="hero-q">SHOULD I SURF?</span>
+        </div>
+        <div id="heroAnswer" class="hero-answer">...</div>
+        <p id="heroWhy" class="hero-why"></p>
+        <div id="heroFacts" class="facts"></div>
+        <canvas id="scene" width="200" height="72" aria-hidden="true"></canvas>
+      </div>
+
+      <div id="best" class="card best">
+        <div class="label">BEST DAY THIS WEEK</div>
+        <div id="bestMain" class="best-main"></div>
+        <p id="bestSub"></p>
+      </div>
+
+      <h2>RIGHT NOW</h2>
+      <div id="now" class="rows"></div>
+
+      <h2>THIS WEEK</h2>
+      <p class="hint">Tap a day to see it hour by hour.</p>
+      <div id="week" class="week"></div>
+
+      <details class="card trust">
+        <summary>CAN I TRUST THIS?</summary>
+        <div id="trust"></div>
+      </details>
+
+      <p class="fine">Forecasts are predictions, not a promise. Always look at the water before you paddle out.</p>
+    </div>
+  </section>
+
+  <!-- ============ MAP ============ -->
+  <section id="tab-map" class="tab" hidden>
+    <div class="map-bar">
+      <div class="search-wrap">
+        <input id="search" type="search" placeholder="Search a beach..." autocomplete="off" aria-label="Search a beach">
+        <ul id="results" class="results" hidden></ul>
+      </div>
+      <button id="nearMe" class="btn">NEAR ME</button>
+    </div>
+    <div id="map"></div>
+    <p id="mapHint" class="hint">Tap a flag to pick a beach. Zoom in to see more.</p>
+    <select id="regionSel" class="pick" aria-label="Browse beaches by state or country"></select>
+    <ul id="regionList" class="list"></ul>
+  </section>
+
+  <!-- ============ LEARN ============ -->
+  <section id="tab-learn" class="tab" hidden>
+    <h2 class="first">SETTINGS</h2>
+    <div class="card settings">
+      <div class="label">MY LEVEL</div>
+      <div class="seg">
+        <button data-skill="beginner">BEGINNER</button>
+        <button data-skill="intermediate">MIDDLE</button>
+        <button data-skill="advanced">EXPERT</button>
+      </div>
+      <div class="label">UNITS</div>
+      <div class="seg">
+        <button data-units="us">FEET / °F</button>
+        <button data-units="metric">METERS / °C</button>
+      </div>
+    </div>
+    <h2>SURF KNOWLEDGE</h2>
+    <div id="knowledge"></div>
+  </section>
+
+  <nav class="tabs" aria-label="Sections">
+    <button data-go="forecast" aria-pressed="true"><i class="ico ico-wave"></i>FORECAST</button>
+    <button data-go="map" aria-pressed="false"><i class="ico ico-flag"></i>BEACHES</button>
+    <button data-go="learn" aria-pressed="false"><i class="ico ico-book"></i>MORE</button>
+  </nav>
+</div>
+
+<script src="vendor/leaflet.js"></script>
+<script src="beaches-us.js"></script>
+<script src="data.js"></script>
+<script src="knowledge.js"></script>
+<script src="tide-stations.js"></script>
+<script src="live.js"></script>
+<script src="forecast.js"></script>
+<script src="map.js"></script>
+<script src="scene.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
