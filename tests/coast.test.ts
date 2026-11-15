@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildCoast, crossings, isLand, unwrap } from '../src/map/coast';
 
-buildCoast(require('../src/data/land.json'));
+buildCoast(); // the same packed coastline the app ships
 
 // [name, lat, lon]
 const LAND: [string, number, number][] = [

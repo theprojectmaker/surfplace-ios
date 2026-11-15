@@ -1,45 +1,37 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, Linking, RefreshControl, ScrollView, View, LayoutAnimation } from 'react-native';
-import Svg, { Rect } from 'react-native-svg';
+import { Animated, Easing, LayoutAnimation, Linking, RefreshControl, ScrollView, View } from 'react-native';
 import { BEACHES, sameSpot } from '../data/beaches';
 import { Cls } from '../engine/forecast';
-import { CHIP, dist, rangeShort, hourLabel, sizeText, ago } from '../engine/format';
+import { ago, CHIP, dist, hourLabel, sizeText } from '../engine/format';
 import { loadNearby, NearbySpot } from '../engine/nearby';
 import { buildReport } from '../engine/report';
 import { fx } from '../sound';
 import { useStore } from '../store';
 import { C, CLS, CLS_SOFT, PX } from '../theme';
-import { Arrow, Card, Chip, Divider, Heading, Meter, Press, T } from '../ui/kit';
+import { Arrow, Box, Chip, Divider, Heading, Icon, IconTile, Meter, PButton, Press, T } from '../ui/kit';
 import { PixelScene } from '../ui/PixelScene';
 import { DayPanel } from './DayPanel';
 import { keyOf, useForecast } from './useForecast';
 
 const ease = () => LayoutAnimation.configureNext(LayoutAnimation.create(180, 'easeInEaseOut', 'opacity'));
 
-// pixel star for the "save this beach" button: filled when saved, with a dark outline
-const STAR = ['....#....', '...###...', '#########', '.#######.', '..#####..', '..##.##..', '.##...##.'];
-const STAR_CELLS = (() => {
-  const W = 11, H = 9, fill = (x: number, y: number) => y >= 1 && y <= 7 && x >= 1 && x <= 9 && STAR[y - 1][x - 1] === '#';
-  const out: { x: number; y: number; ink: boolean }[] = [];
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    if (fill(x, y)) out.push({ x, y, ink: false });
-    else if (fill(x - 1, y) || fill(x + 1, y) || fill(x, y - 1) || fill(x, y + 1)) out.push({ x, y, ink: true });
-  }
-  return out;
-})();
-function Star({ on }: { on: boolean }) {
-  return (
-    <Svg width={33} height={27} viewBox="0 0 11 9">
-      {STAR_CELLS.map((c) => <Rect key={c.x + ',' + c.y} x={c.x} y={c.y} width={1.02} height={1.02} fill={c.ink ? C.ink : on ? C.sun : C.white} />)}
-    </Svg>
-  );
-}
+const ROW_ICON: Record<string, [string, string]> = {
+  WAVES: ['wave', C.seaLight], SWELL: ['bars', '#b9e6ff'], WIND: ['wind', '#e3f4ff'], TIDE: ['tide', '#c8f0e0'],
+  WATER: ['drop', '#9fe0f4'], AIR: ['cloud', '#e9f0f5'], SUN: ['sun', C.sun], MOON: ['moon', '#d9d4ff'], BOARD: ['board', '#ffd2c6'],
+};
 
 // fades and rises into place when it first appears
 function Reveal({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
   const v = useRef(new Animated.Value(0)).current;
-  useEffect(() => { Animated.timing(v, { toValue: 1, duration: 320, delay, easing: Easing.out(Easing.quad), useNativeDriver: true }).start(); }, [v, delay]);
-  return <Animated.View style={{ opacity: v, transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }] }}>{children}</Animated.View>;
+  useEffect(() => { Animated.timing(v, { toValue: 1, duration: 340, delay, easing: Easing.out(Easing.quad), useNativeDriver: true }).start(); }, [v, delay]);
+  return <Animated.View style={{ opacity: v, transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }] }}>{children}</Animated.View>;
+}
+
+// the big answer word springs in
+function Pop({ children, k }: { children: React.ReactNode; k: string }) {
+  const v = useRef(new Animated.Value(0.5)).current;
+  useEffect(() => { v.setValue(0.5); Animated.spring(v, { toValue: 1, friction: 5, tension: 120, useNativeDriver: true }).start(); }, [k, v]);
+  return <Animated.View style={{ transform: [{ scale: v }], alignSelf: 'flex-start' }}>{children}</Animated.View>;
 }
 
 function Blink({ children }: { children: React.ReactNode }) {
@@ -89,176 +81,196 @@ export function ForecastScreen() {
 
   return (
     <ScrollView
-      contentContainerStyle={{ padding: 14, paddingBottom: 28 }}
+      contentContainerStyle={{ padding: 14, paddingBottom: 30 }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { fx.swoosh(); void refresh(); }} tintColor={C.ink} />}
     >
       {/* which beach */}
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        <Press label={s.isFav ? 'Remove from saved beaches' : 'Save this beach'} onPress={() => { fx.select(); s.toggleFav(); }}
-          style={{ width: 60, height: 60, alignItems: 'center', justifyContent: 'center', backgroundColor: s.isFav ? C.sun : C.foam, borderWidth: PX, borderColor: C.ink }}>
-          <Star on={s.isFav} />
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <Press label={s.isFav ? 'Remove from saved beaches' : 'Save this beach'} onPress={() => { fx.select(); s.toggleFav(); }} style={{ width: 64 }}>
+          <Box bg={s.isFav ? C.sun : C.foam} pad={0} style={{ height: 64 }}>
+            <View style={{ height: 56, alignItems: 'center', justifyContent: 'center' }}><Icon name="star" size={30} color={s.isFav ? C.ink : C.seaDeep} /></View>
+          </Box>
         </Press>
         <Press label="Change beach" onPress={() => { fx.tap(); s.go('map'); }} style={{ flex: 1 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, backgroundColor: C.foam, borderWidth: PX, borderColor: C.ink, paddingHorizontal: 12, minHeight: 60 }}>
-            <View style={{ flex: 1 }}>
-              <T px size={12} numberOfLines={2}>{spot.name}</T>
-              <T size={20} color={C.inkSoft} numberOfLines={1}>{spot.region}</T>
+          <Box pad={4} style={{ minHeight: 64 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 48 }}>
+              <View style={{ flex: 1 }}>
+                <T px size={12} numberOfLines={2}>{spot.name}</T>
+                <T size={21} color={C.inkSoft} numberOfLines={1}>{spot.region}</T>
+              </View>
+              <View style={{ backgroundColor: C.sun, borderWidth: 3, borderColor: C.ink, paddingVertical: 8, paddingHorizontal: 8 }}>
+                <T px size={9}>CHANGE</T>
+              </View>
             </View>
-            <View style={{ backgroundColor: C.sun, borderWidth: 3, borderColor: C.ink, paddingVertical: 9, paddingHorizontal: 8 }}>
-              <T px size={9}>CHANGE</T>
-            </View>
-          </View>
+          </Box>
         </Press>
       </View>
 
       {s.favs.length ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }} contentContainerStyle={{ gap: 8 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 12, marginHorizontal: -14 }} contentContainerStyle={{ gap: 8, paddingHorizontal: 14, paddingBottom: 6 }}>
           {s.favs.map((f) => (
-            <Press key={f.name + f.region} label={'Open ' + f.name} onPress={() => { fx.select(); s.pick(f); }}
-              style={{ backgroundColor: sameSpot(f, spot) ? C.sun : C.foam, borderWidth: 3, borderColor: C.ink, paddingHorizontal: 10, minHeight: 44, justifyContent: 'center' }}>
-              <T size={21}>{f.name}</T>
+            <Press key={f.name + f.region} label={'Open ' + f.name} onPress={() => { fx.select(); s.pick(f); }}>
+              <Box bg={sameSpot(f, spot) ? C.sun : C.foam} pad={2} shadow={false}>
+                <View style={{ minHeight: 40, paddingHorizontal: 8, justifyContent: 'center' }}><T size={22}>{f.name}</T></View>
+              </Box>
             </Press>
           ))}
         </ScrollView>
       ) : null}
 
       {st.status === 'loading' ? (
-        <View style={{ marginTop: 14 }}>
-          <Card>
-            <PixelScene ft={2.5} wind="offshore" mph={8} sky="day" />
-            <View style={{ padding: 14, alignItems: 'center' }}>
-              <Blink><T px size={11}>CHECKING THE OCEAN...</T></Blink>
-              <T size={20} color={C.inkSoft} style={{ marginTop: 8, textAlign: 'center' }}>Reading buoys, tides and wave models</T>
-            </View>
-          </Card>
-        </View>
+        <Box pad={0} style={{ marginTop: 16 }}>
+          <PixelScene ft={2.5} wind="offshore" mph={8} sky="day" />
+          <View style={{ padding: 16, alignItems: 'center' }}>
+            <Blink><T px size={11}>CHECKING THE OCEAN...</T></Blink>
+            <T size={21} color={C.inkSoft} style={{ marginTop: 8, textAlign: 'center' }}>Reading buoys, tides and wave models</T>
+          </View>
+        </Box>
       ) : null}
 
       {st.status === 'error' ? (
-        <Card style={{ marginTop: 14, padding: 16 }} bg={C.cream}>
+        <Box bg={C.cream} pad={14} style={{ marginTop: 16 }}>
           <T px size={11}>NO FORECAST</T>
-          <T size={23} style={{ marginTop: 8 }}>{st.message}</T>
-          <Press label="Try again" onPress={() => { fx.tap(); void refresh(); }} style={{ marginTop: 12, backgroundColor: C.sun, borderWidth: PX, borderColor: C.ink, minHeight: 52, alignItems: 'center', justifyContent: 'center' }}>
-            <T px size={10}>TRY AGAIN</T>
-          </Press>
-        </Card>
+          <T size={24} style={{ marginTop: 8 }}>{st.message}</T>
+          <PButton label="TRY AGAIN" style={{ marginTop: 14 }} onPress={() => { fx.tap(); void refresh(); }} />
+        </Box>
       ) : null}
 
       {report && data ? (
         <>
           {/* the big answer */}
           <Reveal>
-            <Card style={{ marginTop: 14, overflow: 'hidden' }} bg={CLS_SOFT[report.hero.cls]}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingTop: 12 }}>
+            <Box bg={CLS_SOFT[report.hero.cls]} pad={0} style={{ marginTop: 16 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingTop: 14 }}>
                 <View style={{ backgroundColor: C.ink, paddingHorizontal: 8, paddingVertical: 6 }}><T px size={10} color={C.white}>{report.hero.when}</T></View>
                 <T px size={9}>SHOULD I SURF?</T>
               </View>
-              <T px size={report.hero.word.length > 8 ? 26 : 34} style={{ paddingHorizontal: 14, paddingTop: 14 }}>{report.hero.word}</T>
-              <T size={25} style={{ paddingHorizontal: 14, paddingTop: 8 }}>{report.hero.why}</T>
+              <View style={{ paddingHorizontal: 14, paddingTop: 14 }}>
+                <Pop k={spot.name + report.hero.word}>
+                  <T px size={report.hero.word.length > 8 ? 28 : 38}>{report.hero.word}</T>
+                </Pop>
+              </View>
+              <T size={26} style={{ paddingHorizontal: 14, paddingTop: 8 }}>{report.hero.why}</T>
               {report.hero.facts.length ? (
-                <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 14, paddingTop: 12 }}>
+                <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 14, paddingTop: 14 }}>
                   {report.hero.facts.map((f) => (
-                    <View key={f.k} style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.72)', borderWidth: 3, borderColor: C.ink, paddingVertical: 8, paddingHorizontal: 4, alignItems: 'center', minWidth: 0 }}>
-                      <T px size={7}>{f.k}</T>
-                      <T size={f.v.length > 9 ? 20 : 25} style={{ marginTop: 5, textAlign: 'center' }} numberOfLines={2}>{f.v}</T>
-                      {f.sub ? <T size={18} color={C.inkSoft} style={{ textAlign: 'center' }}>{f.sub}</T> : null}
+                    <View key={f.k} style={{ flex: 1, minWidth: 0 }}>
+                      <Box bg="rgba(255,255,255,0.8)" pad={2} shadow={false}>
+                        <View style={{ alignItems: 'center', paddingVertical: 6 }}>
+                          <T px size={7}>{f.k}</T>
+                          <T size={f.v.length > 9 ? 21 : 26} style={{ marginTop: 5, textAlign: 'center' }} numberOfLines={2}>{f.v}</T>
+                          {f.sub ? <T size={19} color={C.inkSoft} style={{ textAlign: 'center' }}>{f.sub}</T> : null}
+                        </View>
+                      </Box>
                     </View>
                   ))}
                 </View>
               ) : null}
               {report.hero.score > 0 ? (
-                <View style={{ paddingHorizontal: 14, paddingTop: 12 }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
-                    <T px size={7}>SURF SCORE</T><T px size={7}>{report.hero.score}/100</T>
+                <View style={{ paddingHorizontal: 14, paddingTop: 14 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <T px size={8}>SURF SCORE</T><T px size={8}>{report.hero.score}/100</T>
                   </View>
                   <Meter score={report.hero.score} color={CLS[report.hero.cls]} />
                 </View>
               ) : null}
-              <View style={{ marginTop: 14, borderTopWidth: PX, borderColor: C.ink }}>
+              <View style={{ margin: 14, borderWidth: PX, borderColor: C.ink }}>
                 <PixelScene ft={report.hero.ft} wind={report.hero.wind} mph={report.hero.mph} sky={report.hero.dusk ? 'dusk' : 'day'} />
               </View>
-            </Card>
+            </Box>
           </Reveal>
 
           <Reveal delay={80}>
-            <Card style={{ marginTop: 14, padding: 14 }} bg={C.cream}>
-              <T px size={9} color={C.inkSoft}>BEST DAY THIS WEEK</T>
-              <T px size={13} style={{ marginTop: 8 }}>{report.best.main}</T>
-              <T size={23} style={{ marginTop: 6 }}>{report.best.sub}</T>
-            </Card>
+            <Box bg={C.cream} pad={12} style={{ marginTop: 16 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Icon name="star" size={20} color={C.coral} />
+                <T px size={9} color={C.inkSoft}>BEST DAY THIS WEEK</T>
+              </View>
+              <T px size={13} style={{ marginTop: 10 }}>{report.best.main}</T>
+              <T size={24} style={{ marginTop: 6 }}>{report.best.sub}</T>
+            </Box>
           </Reveal>
 
           <Heading>RIGHT NOW</Heading>
-          <Card>
-            {report.now.map((r, i) => (
-              <View key={r.k}>
-                {i ? <Divider /> : null}
-                <View style={{ flexDirection: 'row', gap: 12, paddingVertical: 12, paddingHorizontal: 14, alignItems: 'flex-start' }}>
-                  <T px size={9} color={C.seaDeep} style={{ width: 66, paddingTop: 7 }}>{r.k}</T>
-                  <View style={{ flex: 1 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <T size={29}>{r.v}</T>
-                      {r.arrow !== undefined ? <Arrow from={r.arrow} /> : null}
+          <Box pad={0}>
+            {report.now.map((r, i) => {
+              const ic = ROW_ICON[r.k] || ROW_ICON.WAVES;
+              return (
+                <View key={r.k}>
+                  {i ? <Divider /> : null}
+                  <View style={{ flexDirection: 'row', gap: 12, paddingVertical: 12, paddingHorizontal: 12, alignItems: 'center' }}>
+                    <IconTile name={ic[0]} bg={ic[1]} />
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <T px size={8} color={C.seaDeep}>{r.k}</T>
+                        {r.arrow !== undefined ? <Arrow from={r.arrow} size={14} color={C.seaDeep} /> : null}
+                      </View>
+                      <T size={30}>{r.v}</T>
+                      <T size={21} color={C.inkSoft}>{r.sub}</T>
                     </View>
-                    <T size={21} color={C.inkSoft}>{r.sub}</T>
                   </View>
                 </View>
-              </View>
-            ))}
-          </Card>
+              );
+            })}
+          </Box>
 
           {nearby && nearby.length ? (
             <>
               <Heading>NEARBY BEACHES</Heading>
-              <T size={20} color={C.inkSoft} style={{ marginTop: -4, marginBottom: 8 }}>How the closest breaks look today. Tap one to open it.</T>
-              <Card>
+              <T size={21} color={C.inkSoft} style={{ marginTop: -6, marginBottom: 10 }}>How the closest breaks look today. Tap one to open it.</T>
+              <Box pad={0}>
                 {nearby.slice(0, 5).map((n, i) => (
                   <View key={n.spot.id}>
                     {i ? <Divider /> : null}
                     <Press label={'Open ' + n.spot.name} onPress={() => { fx.select(); s.pick(n.spot); }}
-                      style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 12, minHeight: 60 }}>
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 12, minHeight: 64 }}>
+                      <Icon name="pin" size={26} color={C.coral} />
                       <View style={{ flex: 1 }}>
-                        <T size={25} numberOfLines={1}>{n.spot.name}</T>
+                        <T size={26} numberOfLines={1}>{n.spot.name}</T>
                         <T size={19} color={C.inkSoft} numberOfLines={1}>
                           {dist(n.km, s.units)} away{n.bestScore >= 30 ? ' · best ' + hourLabel(n.bestHour) : ''}
                         </T>
                       </View>
                       <View style={{ alignItems: 'flex-end', gap: 4 }}>
-                        <T size={23}>{sizeText(n.bestFt / 3.28084, s.units)}</T>
-                        <Chip label={CHIP[n.label]} color={CLS[n.cls as Cls]} style={{ paddingVertical: 4, paddingHorizontal: 8 }} />
+                        <T size={24}>{sizeText(n.bestFt / 3.28084, s.units)}</T>
+                        <Chip label={CHIP[n.label]} color={CLS[n.cls as Cls]} style={{ minWidth: 64 }} />
                       </View>
                     </Press>
                   </View>
                 ))}
-              </Card>
+              </Box>
             </>
           ) : null}
 
           <Heading>THIS WEEK</Heading>
-          <T size={20} color={C.inkSoft} style={{ marginTop: -4, marginBottom: 8 }}>Tap a day to see it hour by hour.</T>
-          <View style={{ gap: 8 }}>
+          <T size={21} color={C.inkSoft} style={{ marginTop: -6, marginBottom: 10 }}>Tap a day to see it hour by hour.</T>
+          <View style={{ gap: 12 }}>
             {report.week.map((w) => (
               <View key={w.d}>
-                <Press label={w.name + ', ' + w.chip} onPress={() => { fx.tap(); ease(); setOpenDay(openDay === w.d ? null : w.d); }}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: openDay === w.d ? C.cream : C.foam, borderWidth: PX, borderColor: C.ink, paddingHorizontal: 10, minHeight: 64 }}>
-                  <View style={{ width: 54 }}>
-                    <T px size={10}>{w.name}</T>
-                    <T size={17} color={C.inkSoft}>{w.date}</T>
-                  </View>
-                  <Chip label={w.chip} color={CLS[w.cls]} style={{ width: 78 }} />
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <T size={26} numberOfLines={1}>{w.size}</T>
-                    <T size={18} color={C.inkSoft} numberOfLines={1}>{w.time ? w.time : w.conf}</T>
-                  </View>
+                <Press label={w.name + ', ' + w.chip} onPress={() => { fx.tap(); ease(); setOpenDay(openDay === w.d ? null : w.d); }}>
+                  <Box bg={openDay === w.d ? C.cream : C.foam} pad={2}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 56 }}>
+                      <View style={{ width: 54 }}>
+                        <T px size={10}>{w.name}</T>
+                        <T size={18} color={C.inkSoft}>{w.date}</T>
+                      </View>
+                      <Chip label={w.chip} color={CLS[w.cls]} style={{ width: 80 }} />
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <T size={27} numberOfLines={1}>{w.size}</T>
+                        <T size={19} color={C.inkSoft} numberOfLines={1}>{w.time ? w.time : w.conf}</T>
+                      </View>
+                      <T px size={12} color={C.inkSoft}>{openDay === w.d ? '-' : '+'}</T>
+                    </View>
+                  </Box>
                 </Press>
                 {openDay === w.d ? <DayPanel data={data} rated={report.rated} wins={report.wins} d={w.d} units={s.units} /> : null}
               </View>
             ))}
           </View>
 
-          <Card style={{ marginTop: 22 }}>
+          <Box pad={0} style={{ marginTop: 26 }}>
             <Press label="Can I trust this?" onPress={() => { fx.tap(); ease(); setTrustOpen(!trustOpen); }}
-              style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16 }}>
+              style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14 }}>
               <T px size={10}>CAN I TRUST THIS?</T>
               <T px size={14}>{trustOpen ? '-' : '+'}</T>
             </Press>
@@ -267,22 +279,22 @@ export function ForecastScreen() {
                 {report.trust.map((t) => (
                   <View key={t.k} style={{ marginBottom: 12 }}>
                     <T px size={8} color={C.seaDeep} style={{ marginBottom: 3 }}>{t.k}</T>
-                    <T size={22}>{t.text}</T>
+                    <T size={23}>{t.text}</T>
                     {t.link ? (
                       <Press label="Open the buoy page" onPress={() => { fx.tap(); void Linking.openURL(t.link as string); }}>
-                        <T size={21} color={C.seaDeep} style={{ textDecorationLine: 'underline' }}>See this buoy on the NOAA site</T>
+                        <T size={22} color={C.seaDeep} style={{ textDecorationLine: 'underline' }}>See this buoy on the NOAA site</T>
                       </Press>
                     ) : null}
                   </View>
                 ))}
               </View>
             ) : null}
-          </Card>
+          </Box>
 
-          <T size={19} color={C.inkSoft} style={{ marginTop: 16, textAlign: 'center' }}>
+          <T size={20} color={C.inkSoft} style={{ marginTop: 18, textAlign: 'center' }}>
             Updated {ago(st.status === 'ready' ? st.at : Date.now())}. Pull down to refresh.
           </T>
-          <T size={18} color={C.inkSoft} style={{ marginTop: 4, textAlign: 'center' }}>
+          <T size={19} color={C.inkSoft} style={{ marginTop: 4, textAlign: 'center' }}>
             Forecasts are predictions, not a promise. Always look at the water before you paddle out.
           </T>
         </>

@@ -10,11 +10,11 @@ import { Spot } from '../engine/types';
 import { COLORS, latToWy, lonToWx, Raster, rasterize, waves, wxToLon, wyToLat } from '../map/raster';
 import { fx } from '../sound';
 import { C, PX } from '../theme';
-import { Press, T } from './kit';
+import { Box, Press, T } from './kit';
 
 const CELL = 6;       // one map "pixel" = 6 screen points
 const PAD = 0.4;      // extra map drawn around the screen, so dragging never shows a blank edge
-const MIN_Z = 2, MAX_Z = 12;
+const MIN_Z = 2, MAX_Z = 11;
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const wrap = (v: number) => ((v % 1) + 1) % 1;
 
@@ -75,7 +75,7 @@ function Flag({ x, y, on, name, label, onPress }: { x: number; y: number; on: bo
   );
 }
 
-export const PixelMap = memo(function PixelMap({ spot, onPick, active }: { spot: Spot; onPick: (s: Spot) => void; active: boolean }) {
+export const PixelMap = memo(function PixelMap({ spot, onPick, active, inset }: { spot: Spot; onPick: (s: Spot) => void; active: boolean; inset: { top: number; bottom: number } }) {
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [view, setView] = useState<MapView>(() => ({ cx: lonToWx(spot.lon), cy: latToWy(spot.lat), z: 10 }));
   const [tap, setTap] = useState<Tap | null>(null);
@@ -155,7 +155,7 @@ export const PixelMap = memo(function PixelMap({ spot, onPick, active }: { spot:
   const flags = useMemo(() => {
     if (!size.w) return [];
     const out: { spot: Spot; x: number; y: number }[] = [];
-    const cw = showLabels ? 130 : 46, ch = showLabels ? 40 : 46, taken = new Set<string>();
+    const cw = showLabels ? 150 : 46, ch = showLabels ? 46 : 46, taken = new Set<string>();
     for (const b of BEACHES) {
       if (out.length >= 90) break;
       if (view.z < 6 && !b.top) continue;
@@ -196,7 +196,7 @@ export const PixelMap = memo(function PixelMap({ spot, onPick, active }: { spot:
   };
 
   return (
-    <View style={{ flex: 1, minHeight: 300, borderWidth: PX, borderColor: C.ink, backgroundColor: C.sea, overflow: 'hidden' }} onLayout={onLayout} {...responder.panHandlers}>
+    <View style={{ flex: 1, backgroundColor: C.sea, overflow: 'hidden' }} onLayout={onLayout} {...responder.panHandlers}>
       {raster ? (
         <Animated.View style={{
           position: 'absolute', left: -padX, top: -padY, width: cols * CELL, height: rows * CELL,
@@ -219,16 +219,16 @@ export const PixelMap = memo(function PixelMap({ spot, onPick, active }: { spot:
         </Animated.View>
       ) : null}
 
-      <View style={{ position: 'absolute', left: 8, top: 8, gap: 6 }}>
-        <Press label="Zoom in" onPress={() => zoomBy(1)} style={zoomBtn}><T px size={14}>+</T></Press>
-        <Press label="Zoom out" onPress={() => zoomBy(-1)} style={zoomBtn}><T px size={14}>-</T></Press>
+      <View style={{ position: 'absolute', right: 12, top: inset.top, gap: 10 }}>
+        <Press label="Zoom in" onPress={() => zoomBy(1)}><Box pad={0}><View style={zoomBtn}><T px size={16}>+</T></View></Box></Press>
+        <Press label="Zoom out" onPress={() => zoomBy(-1)}><Box pad={0}><View style={zoomBtn}><T px size={16}>-</T></View></Box></Press>
       </View>
-      <View pointerEvents="none" style={{ position: 'absolute', right: 0, bottom: 0, backgroundColor: 'rgba(246,253,255,0.85)', paddingHorizontal: 5 }}>
+      <View pointerEvents="none" style={{ position: 'absolute', right: 0, bottom: inset.bottom - 4, backgroundColor: 'rgba(246,253,255,0.85)', paddingHorizontal: 5 }}>
         <T size={14} color={C.inkSoft}>Coast: Natural Earth · Beaches: USGS, OSM</T>
       </View>
 
       {tap ? (
-        <View style={{ position: 'absolute', left: 8, right: 8, bottom: 26, backgroundColor: C.foam, borderWidth: PX, borderColor: C.ink, padding: 10, gap: 8 }}>
+        <View style={{ position: 'absolute', left: 12, right: 12, bottom: inset.bottom + 14, backgroundColor: C.foam, borderWidth: PX, borderColor: C.ink, padding: 10, gap: 8 }}>
           {tap.beach ? (
             <Press label={'Open ' + tap.beach.name} style={menuBtn(C.sun)} onPress={() => { fx.flag(); const b = tap.beach as Spot; setTap(null); onPick(b); }}>
               <T size={22} numberOfLines={1}>{tap.beach.name}</T>
@@ -248,5 +248,5 @@ export const PixelMap = memo(function PixelMap({ spot, onPick, active }: { spot:
   );
 });
 
-const zoomBtn = { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', backgroundColor: C.foam, borderWidth: PX, borderColor: C.ink } as const;
+const zoomBtn = { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' } as const;
 const menuBtn = (bg: string) => ({ backgroundColor: bg, borderWidth: 3, borderColor: C.ink, paddingHorizontal: 10, paddingVertical: 8, minHeight: 52 }) as const;

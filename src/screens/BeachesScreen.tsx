@@ -1,6 +1,6 @@
 import * as Location from 'expo-location';
 import React, { useMemo, useState } from 'react';
-import { FlatList, Modal, Platform, TextInput, View } from 'react-native';
+import { FlatList, Modal, TextInput, View } from 'react-native';
 import { BEACHES, regions, search } from '../data/beaches';
 import { dist } from '../engine/format';
 import { km } from '../engine/live';
@@ -8,14 +8,17 @@ import { Spot } from '../engine/types';
 import { fx } from '../sound';
 import { useStore } from '../store';
 import { C, PX } from '../theme';
-import { Card, Press, T } from '../ui/kit';
+import { Box, Icon, PButton, Press, T } from '../ui/kit';
 import { PixelMap } from '../ui/PixelMap';
+
+const TOP = 78;     // room for the floating search bar
+const BOTTOM = 118; // room for the selected-beach card
 
 export function BeachesScreen() {
   const s = useStore();
   const [q, setQ] = useState('');
   const [focus, setFocus] = useState(false);
-  const [hint, setHint] = useState('Drag to move, pinch to zoom, tap a flag. Tap the coast for the nearest beach.');
+  const [hint, setHint] = useState('Drag to move, pinch to zoom. Tap a flag, or tap the coast.');
   const [browse, setBrowse] = useState(false);
   const results = useMemo(() => search(q), [q]);
 
@@ -42,23 +45,31 @@ export function BeachesScreen() {
   };
 
   return (
-    <View style={{ flex: 1, padding: 14, paddingBottom: 10 }}>
-      <View style={{ flexDirection: 'row', gap: 8, zIndex: 20 }}>
+    <View style={{ flex: 1 }}>
+      {/* the map fills the whole screen; everything else floats on top of it */}
+      <PixelMap spot={s.spot} onPick={(b) => { s.pick(b); }} active={s.tab === 'map'} inset={{ top: TOP, bottom: BOTTOM }} />
+
+      <View style={{ position: 'absolute', left: 12, right: 12, top: 12, zIndex: 20, flexDirection: 'row', gap: 10 }}>
         <View style={{ flex: 1 }}>
-          <TextInput
-            value={q} onChangeText={setQ} onFocus={() => setFocus(true)} onBlur={() => setTimeout(() => setFocus(false), 150)}
-            placeholder="Search a beach..." placeholderTextColor={C.inkSoft} autoCorrect={false} autoCapitalize="none" returnKeyType="search"
-            clearButtonMode="while-editing" accessibilityLabel="Search a beach"
-            style={{ minHeight: 52, fontFamily: 'VT323', fontSize: 25, color: C.ink, backgroundColor: C.white, borderWidth: PX, borderColor: C.ink, paddingHorizontal: 10, paddingVertical: Platform.OS === 'ios' ? 8 : 4 }}
-          />
+          <Box pad={0} bg={C.white}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: 8, gap: 6 }}>
+              <Icon name="pin" size={20} color={C.coral} />
+              <TextInput
+                value={q} onChangeText={setQ} onFocus={() => setFocus(true)} onBlur={() => setTimeout(() => setFocus(false), 150)}
+                placeholder="Search a beach..." placeholderTextColor={C.inkSoft} autoCorrect={false} autoCapitalize="none" returnKeyType="search"
+                clearButtonMode="while-editing" accessibilityLabel="Search a beach"
+                style={{ flex: 1, height: 46, fontFamily: 'VT323', fontSize: 26, color: C.ink, paddingVertical: 0 }}
+              />
+            </View>
+          </Box>
           {focus && q.trim() ? (
-            <View style={{ position: 'absolute', top: 52, left: 0, right: -118, maxHeight: 340, backgroundColor: C.white, borderWidth: PX, borderTopWidth: 0, borderColor: C.ink, zIndex: 30 }}>
+            <View style={{ position: 'absolute', top: 56, left: 0, right: -120, maxHeight: 330, backgroundColor: C.white, borderWidth: PX, borderColor: C.ink, zIndex: 30 }}>
               {results.length ? (
                 <FlatList
                   data={results} keyExtractor={(b) => b.id} keyboardShouldPersistTaps="handled"
                   renderItem={({ item }) => (
                     <Press label={item.name} onPress={() => choose(item)} style={{ paddingVertical: 9, paddingHorizontal: 12, borderBottomWidth: 2, borderColor: C.line }}>
-                      <T size={24} numberOfLines={1}>{item.name}</T>
+                      <T size={25} numberOfLines={1}>{item.name}</T>
                       <T size={19} color={C.inkSoft} numberOfLines={1}>{item.region}</T>
                     </Press>
                   )}
@@ -69,20 +80,24 @@ export function BeachesScreen() {
             </View>
           ) : null}
         </View>
-        <Press label="Find the closest beach to me" onPress={nearMe} style={{ backgroundColor: C.sun, borderWidth: PX, borderColor: C.ink, minHeight: 52, paddingHorizontal: 10, justifyContent: 'center' }}>
-          <T px size={9}>NEAR ME</T>
-        </Press>
+        <PButton label="NEAR ME" a11y="Find the closest beach to me" size={9} pad={13} onPress={nearMe} />
       </View>
 
-      <View style={{ flex: 1, marginTop: 10 }}>
-        <PixelMap spot={s.spot} onPick={(b) => { s.pick(b); }} active={s.tab === 'map'} />
-      </View>
-
-      <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center', marginTop: 10 }}>
-        <T size={19} color={C.inkSoft} style={{ flex: 1 }}>{hint}</T>
-        <Press label="Browse all beaches by state or country" onPress={() => { fx.tap(); setBrowse(true); }} style={{ backgroundColor: C.foam, borderWidth: PX, borderColor: C.ink, minHeight: 48, paddingHorizontal: 10, justifyContent: 'center' }}>
-          <T px size={8}>BROWSE</T>
-        </Press>
+      {/* the beach you have chosen */}
+      <View style={{ position: 'absolute', left: 12, right: 12, bottom: 12 }}>
+        <Box pad={8}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <T px size={11} numberOfLines={1}>{s.spot.name}</T>
+              <T size={20} color={C.inkSoft} numberOfLines={1}>{s.spot.region}</T>
+            </View>
+            <PButton label="FORECAST" a11y={'Open the forecast for ' + s.spot.name} size={9} pad={9} onPress={() => { fx.select(); s.go('forecast'); }} />
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6 }}>
+            <T size={19} color={C.inkSoft} style={{ flex: 1 }} numberOfLines={2}>{hint}</T>
+            <PButton label="BROWSE" a11y="Browse all beaches by state or country" bg={C.white} size={8} pad={7} onPress={() => { fx.tap(); setBrowse(true); }} />
+          </View>
+        </Box>
       </View>
 
       <BrowseModal visible={browse} onClose={() => setBrowse(false)} onPick={(b) => { setBrowse(false); choose(b); }} />
@@ -98,32 +113,32 @@ function BrowseModal({ visible, onClose, onPick }: { visible: boolean; onClose: 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: C.aqua }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, backgroundColor: C.sea, borderBottomWidth: PX, borderColor: C.ink }}>
-          <Press label={cur ? 'Back to the list of places' : 'Close'} onPress={() => { fx.back(); if (cur) setRegion(null); else onClose(); }} style={{ backgroundColor: C.sun, borderWidth: 3, borderColor: C.ink, paddingVertical: 10, paddingHorizontal: 12 }}>
-            <T px size={9}>{cur ? 'BACK' : 'CLOSE'}</T>
-          </Press>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, backgroundColor: C.sea, borderBottomWidth: PX, borderColor: C.ink }}>
+          <PButton label={cur ? 'BACK' : 'CLOSE'} a11y={cur ? 'Back to the list of places' : 'Close'} size={9} pad={9} onPress={() => { fx.back(); if (cur) setRegion(null); else onClose(); }} />
           <T px size={11} color={C.white} style={{ flex: 1 }} numberOfLines={2}>{cur ? cur.name.toUpperCase() : 'ALL BEACHES'}</T>
         </View>
         {cur ? (
           <FlatList
-            data={cur.beaches} keyExtractor={(b) => b.id} contentContainerStyle={{ padding: 14 }}
+            data={cur.beaches} keyExtractor={(b) => b.id} contentContainerStyle={{ padding: 14, gap: 10 }}
             renderItem={({ item }) => (
-              <Press label={item.name} onPress={() => onPick(item)} style={{ backgroundColor: C.foam, borderWidth: 3, borderColor: C.ink, padding: 12, marginBottom: 8, minHeight: 52, justifyContent: 'center' }}>
-                <T size={25}>{item.name}</T>
+              <Press label={item.name} onPress={() => onPick(item)}>
+                <Box pad={6}><View style={{ minHeight: 40, justifyContent: 'center' }}><T size={26}>{item.name}</T></View></Box>
               </Press>
             )}
           />
         ) : (
           <FlatList
-            data={all} keyExtractor={(r) => r.name} contentContainerStyle={{ padding: 14 }}
-            ListHeaderComponent={<T size={20} color={C.inkSoft} style={{ marginBottom: 10 }}>{BEACHES.length} beaches. United States first.</T>}
+            data={all} keyExtractor={(r) => r.name} contentContainerStyle={{ padding: 14, gap: 10 }}
+            ListHeaderComponent={<T size={21} color={C.inkSoft} style={{ marginBottom: 6 }}>{BEACHES.length} beaches. United States first.</T>}
             renderItem={({ item }) => (
-              <Card style={{ marginBottom: 8 }}>
-                <Press label={item.name} onPress={() => { fx.select(); setRegion(item.name); }} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, minHeight: 56 }}>
-                  <T size={25} style={{ flex: 1 }} numberOfLines={1}>{item.name}</T>
-                  <T size={22} color={C.inkSoft}>{item.beaches.length}</T>
-                </Press>
-              </Card>
+              <Press label={item.name} onPress={() => { fx.select(); setRegion(item.name); }}>
+                <Box pad={6}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: 44 }}>
+                    <T size={26} style={{ flex: 1 }} numberOfLines={1}>{item.name}</T>
+                    <T size={23} color={C.inkSoft}>{item.beaches.length}</T>
+                  </View>
+                </Box>
+              </Press>
             )}
           />
         )}

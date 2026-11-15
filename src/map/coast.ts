@@ -3,31 +3,23 @@
 //
 // The coastline (Natural Earth, public domain) is a set of closed rings. Land that crosses the
 // date line (far-east Russia, Wrangel Island, Fiji) is stored as a ring that jumps from +180 to
-// -180, so every ring is first "unwrapped" into one continuous shape, then drawn again one world
-// to the east and west. Segments are bucketed by latitude; a row's land is found by counting how
-// many coast edges lie east of each point (odd = land).
+// -180, so every ring is unwrapped into one continuous shape, then drawn again one world to the
+// east and west. Segments are bucketed by latitude; a row's land is found by counting how many
+// coast edges lie east of each point (odd = land).
+//
+// The shipped data (src/data/coast.ts) is these rings, already unwrapped and simplified, packed
+// into one compact string by tools/build-coast.ts, so loading it takes a few milliseconds and
+// a few megabytes instead of decoding a 3 MB nested JSON file on the phone.
 
 export type Topo = {
   transform: { scale: [number, number]; translate: [number, number] };
   arcs: number[][][];
   objects: { land: { geometries: { type: string; arcs: any }[] } };
 };
+export type Ring = ArrayLike<number>; // x0, y0, x1, y1, ... (closed)
 
 const B = 0.05; // latitude bucket height in degrees
 let index: Map<number, Float32Array> | null = null;
-
-function decodeArcs(t: Topo): Float64Array[] {
-  const [sx, sy] = t.transform.scale, [tx, ty] = t.transform.translate;
-  return t.arcs.map((arc) => {
-    const out = new Float64Array(arc.length * 2);
-    let x = 0, y = 0;
-    for (let i = 0; i < arc.length; i++) {
-      x += arc[i][0]; y += arc[i][1];
-      out[2 * i] = x * sx + tx; out[2 * i + 1] = y * sy + ty;
-    }
-    return out;
-  });
-}
 
 // one ring as continuous longitudes (it may run past +-180)
 export function unwrap(p: number[]): Float64Array {
@@ -49,8 +41,18 @@ export function unwrap(p: number[]): Float64Array {
   return Float64Array.from(out);
 }
 
-function ringsOf(t: Topo): Float64Array[] {
-  const arcs = decodeArcs(t);
+// rings from a TopoJSON file (used by the data builder, never on the phone)
+export function ringsFromTopo(t: Topo): Float64Array[] {
+  const [sx, sy] = t.transform.scale, [tx, ty] = t.transform.translate;
+  const arcs = t.arcs.map((arc) => {
+    const out = new Float64Array(arc.length * 2);
+    let x = 0, y = 0;
+    for (let i = 0; i < arc.length; i++) {
+      x += arc[i][0]; y += arc[i][1];
+      out[2 * i] = x * sx + tx; out[2 * i + 1] = y * sy + ty;
+    }
+    return out;
+  });
   const rings: Float64Array[] = [];
   for (const g of t.objects.land.geometries) {
     const polys: number[][][] = g.type === 'Polygon' ? [g.arcs] : g.arcs;
@@ -72,13 +74,45 @@ function ringsOf(t: Topo): Float64Array[] {
   return rings;
 }
 
-export function buildCoast(topo?: Topo): void {
+// ---------- the packed form: one base64 string of float32s ----------
+// layout: ringCount, then for each ring: pointCount, x0, y0, x1, y1, ...
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+function b64bytes(s: string): Uint8Array {
+  const lut = new Uint8Array(128);
+  for (let i = 0; i < 64; i++) lut[B64.charCodeAt(i)] = i;
+  const pad = s.endsWith('==') ? 2 : s.endsWith('=') ? 1 : 0;
+  const out = new Uint8Array((s.length / 4) * 3 - pad);
+  let o = 0;
+  for (let i = 0; i < s.length; i += 4) {
+    const n = (lut[s.charCodeAt(i)] << 18) | (lut[s.charCodeAt(i + 1)] << 12) | (lut[s.charCodeAt(i + 2)] << 6) | lut[s.charCodeAt(i + 3)];
+    if (o < out.length) out[o++] = (n >> 16) & 255;
+    if (o < out.length) out[o++] = (n >> 8) & 255;
+    if (o < out.length) out[o++] = n & 255;
+  }
+  return out;
+}
+
+export function decodeRings(packed: string): Float32Array[] {
+  const bytes = b64bytes(packed);
+  const buf = new ArrayBuffer(bytes.length);
+  new Uint8Array(buf).set(bytes);
+  const f = new Float32Array(buf);
+  const rings: Float32Array[] = [];
+  let k = 1;
+  for (let r = 0; r < f[0]; r++) {
+    const n = f[k++];
+    rings.push(f.subarray(k, k + n * 2));
+    k += n * 2;
+  }
+  return rings;
+}
+
+export function buildCoast(rings?: Ring[]): void {
   if (index) return;
-  const t = topo || (require('../data/land.json') as Topo);
-  const rings = ringsOf(t);
+  const all: Ring[] = rings || decodeRings((require('../data/coast') as { COAST: string }).COAST);
   const bmax = Math.floor(86 / B), bmin = -bmax;
   const each = (fn: (x1: number, y1: number, x2: number, y2: number) => void) => {
-    for (const r of rings) {
+    for (const r of all) {
       let minx = Infinity, maxx = -Infinity;
       for (let i = 0; i < r.length; i += 2) { if (r[i] < minx) minx = r[i]; if (r[i] > maxx) maxx = r[i]; }
       for (const shift of [0, 360, -360]) {

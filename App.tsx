@@ -4,10 +4,9 @@ import { VT323_400Regular } from '@expo-google-fonts/vt323';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import React, { useEffect, useState } from 'react';
-import { InteractionManager, View } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Animated, InteractionManager, Pressable, View } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Rect } from 'react-native-svg';
 import { buildCoast } from './src/map/coast';
 import { BeachesScreen } from './src/screens/BeachesScreen';
 import { ForecastScreen } from './src/screens/ForecastScreen';
@@ -15,97 +14,79 @@ import { MoreScreen } from './src/screens/MoreScreen';
 import { fx, warmUp } from './src/sound';
 import { StoreProvider, Tab, useStore } from './src/store';
 import { C, F, PX } from './src/theme';
-import { Press, T } from './src/ui/kit';
+import { ErrorBoundary } from './src/ui/ErrorBoundary';
+import { Icon, T } from './src/ui/kit';
+import { Banner, WaterBg } from './src/ui/Scenery';
 
 void SplashScreen.preventAutoHideAsync().catch(() => {});
 
-// the 16x16 pixel wave from the app icon
-const LOGO = [
-  '................', '................', '.....wwww.......', '...wwbbbbww.....',
-  '..wbbbbbbbbw....', '.wbbbddddbbbw...', '.wbbd....dbbw...', 'wbbd......dbw...',
-  'wbbd.......ww...', 'wbbbd...........', 'wbbbbd..........', 'wbbbbbdd......ww',
-  'bbbbbbbbddddwwbb', 'bbbbbbbbbbbbbbbb', 'dbbbbbbbbbbbbbbd', 'dddddddddddddddd',
+const TABS: { key: Tab; label: string; icon: string }[] = [
+  { key: 'forecast', label: 'FORECAST', icon: 'wave' },
+  { key: 'map', label: 'BEACHES', icon: 'pin' },
+  { key: 'more', label: 'MORE', icon: 'star' },
 ];
-const LOGO_COL: Record<string, string> = { w: '#ffffff', b: C.sea, d: C.seaDeep };
-function Logo() {
+
+// one screen. It stays alive when hidden, so switching is instant and the map keeps its place.
+function Pane({ active, children }: { active: boolean; children: React.ReactNode }) {
+  const o = useRef(new Animated.Value(1)).current;
+  const was = useRef(active);
+  useEffect(() => {
+    if (active && !was.current) { o.setValue(0.2); Animated.timing(o, { toValue: 1, duration: 200, useNativeDriver: true }).start(); }
+    was.current = active;
+  }, [active, o]);
+  return <Animated.View style={{ flex: 1, opacity: o, display: active ? 'flex' : 'none' }}>{children}</Animated.View>;
+}
+
+function TabBar({ bottom }: { bottom: number }) {
+  const s = useStore();
   return (
-    <View style={{ width: 48, height: 48, backgroundColor: C.sun, borderWidth: PX, borderColor: C.ink }}>
-      <Svg width="100%" height="100%" viewBox="0 0 16 16">
-        {LOGO.flatMap((row, y) => row.split('').map((ch, x) => (LOGO_COL[ch] ? <Rect key={x + ',' + y} x={x} y={y} width={1.02} height={1.02} fill={LOGO_COL[ch]} /> : null)))}
-      </Svg>
+    <View style={{ flexDirection: 'row', backgroundColor: C.ink, borderTopWidth: PX, borderColor: C.ink }}>
+      {TABS.map((t, i) => {
+        const on = s.tab === t.key;
+        return (
+          <Pressable
+            key={t.key} accessibilityRole="tab" accessibilityLabel={t.label} accessibilityState={{ selected: on }}
+            onPress={() => { if (!on) { fx.tap(); s.go(t.key); } }}
+            style={({ pressed }) => ({
+              flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6,
+              // the button runs all the way to the screen edge; its content sits above the home indicator
+              paddingTop: 10, paddingBottom: Math.max(bottom, 10) + 4,
+              backgroundColor: on ? C.sun : pressed ? '#dff4fb' : C.foam,
+              borderLeftWidth: i ? PX : 0, borderColor: C.ink,
+            })}
+          >
+            <Icon name={t.icon} size={26} color={on ? C.ink : C.seaDeep} />
+            <T px size={8} color={C.ink}>{t.label}</T>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
-
-function TabIcon({ kind }: { kind: Tab }) {
-  if (kind === 'forecast') {
-    return (
-      <View style={{ width: 20, height: 16 }}>
-        <View style={{ position: 'absolute', left: 0, top: 12, width: 20, height: 4, backgroundColor: C.sea }} />
-        <View style={{ position: 'absolute', left: 0, top: 8, width: 12, height: 4, backgroundColor: C.sea }} />
-        <View style={{ position: 'absolute', left: 4, top: 4, width: 8, height: 4, backgroundColor: C.sea }} />
-        <View style={{ position: 'absolute', left: 8, top: 0, width: 8, height: 4, backgroundColor: C.sea }} />
-      </View>
-    );
-  }
-  if (kind === 'map') {
-    return (
-      <View style={{ width: 20, height: 16 }}>
-        <View style={{ position: 'absolute', left: 4, top: 0, width: 4, height: 16, backgroundColor: C.ink }} />
-        <View style={{ position: 'absolute', left: 8, top: 0, width: 10, height: 8, backgroundColor: C.coral }} />
-      </View>
-    );
-  }
-  return (
-    <View style={{ width: 20, height: 16, justifyContent: 'space-between' }}>
-      {[0, 1, 2].map((i) => <View key={i} style={{ height: 4, backgroundColor: C.ink }} />)}
-    </View>
-  );
-}
-
-const TABS: { key: Tab; label: string }[] = [{ key: 'forecast', label: 'FORECAST' }, { key: 'map', label: 'BEACHES' }, { key: 'more', label: 'MORE' }];
 
 function Shell() {
   const s = useStore();
   const insets = useSafeAreaInsets();
-  const [seenMap, setSeenMap] = useState(false);
-  useEffect(() => { if (s.tab === 'map') setSeenMap(true); }, [s.tab]);
+  const seenMap = useRef(false);
+  if (s.tab === 'map') seenMap.current = true;
   useEffect(() => {
     warmUp();
-    // decode the world coastline in a quiet moment, so the first visit to the map is instant
-    const h = InteractionManager.runAfterInteractions(() => { setTimeout(() => { try { buildCoast(); } catch { /* built on demand instead */ } }, 2500); });
+    // decode the world coastline in a quiet moment, so the first visit to the map is quick
+    const h = InteractionManager.runAfterInteractions(() => { setTimeout(() => { try { buildCoast(); } catch { /* built on demand instead */ } }, 2000); });
     return () => h.cancel();
   }, []);
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.ink }}>
-      <StatusBar style="light" />
-      <View style={{ flex: 1, backgroundColor: C.aqua }}>
-        <View style={{ paddingTop: insets.top + 10, paddingBottom: 10, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.sea, borderBottomWidth: PX, borderColor: C.ink }}>
-          <Logo />
-          <View style={{ flex: 1 }}>
-            <T px size={18} color={C.white} style={{ textShadowColor: C.ink, textShadowOffset: { width: 3, height: 3 }, textShadowRadius: 0 }}>SURFPLACE</T>
-            <T size={19} color="#eafaff" style={{ marginTop: 3 }}>All the surf knowledge you need in one app</T>
-          </View>
-        </View>
-
-        {/* all three screens stay alive so switching is instant and the map keeps its place */}
-        <View style={{ flex: 1, display: s.tab === 'forecast' ? 'flex' : 'none' }}><ForecastScreen /></View>
-        {seenMap ? <View style={{ flex: 1, display: s.tab === 'map' ? 'flex' : 'none' }}><BeachesScreen /></View> : null}
-        <View style={{ flex: 1, display: s.tab === 'more' ? 'flex' : 'none' }}><MoreScreen /></View>
+    <View style={{ flex: 1, backgroundColor: C.aqua }}>
+      <StatusBar style="dark" />
+      <WaterBg />
+      <Banner top={insets.top} />
+      <View style={{ flex: 1 }}>
+        <Pane active={s.tab === 'forecast'}><ErrorBoundary name="forecast"><ForecastScreen /></ErrorBoundary></Pane>
+        {seenMap.current ? <Pane active={s.tab === 'map'}><ErrorBoundary name="beaches"><BeachesScreen /></ErrorBoundary></Pane> : null}
+        <Pane active={s.tab === 'more'}><ErrorBoundary name="more"><MoreScreen /></ErrorBoundary></Pane>
       </View>
-
-      <View style={{ flexDirection: 'row', gap: PX, backgroundColor: C.ink, paddingBottom: insets.bottom, borderTopWidth: PX, borderColor: C.ink }}>
-        {TABS.map((t) => (
-          <View key={t.key} style={{ flex: 1 }}>
-            <Press label={t.label} onPress={() => { if (s.tab !== t.key) { fx.tap(); s.go(t.key); } }}
-              style={{ height: 68, alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: s.tab === t.key ? C.sun : C.foam }}>
-              <TabIcon kind={t.key} />
-              <T px size={8}>{t.label}</T>
-            </Press>
-          </View>
-        ))}
-      </View>
+      <TabBar bottom={insets.bottom} />
     </View>
   );
 }
@@ -122,9 +103,11 @@ function Gate() {
 export default function App() {
   return (
     <SafeAreaProvider>
-      <StoreProvider>
-        <Gate />
-      </StoreProvider>
+      <ErrorBoundary name="app">
+        <StoreProvider>
+          <Gate />
+        </StoreProvider>
+      </ErrorBoundary>
     </SafeAreaProvider>
   );
 }

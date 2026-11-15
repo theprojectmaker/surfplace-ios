@@ -25,8 +25,7 @@ const knowledge = KNOWLEDGE.map((k) => [k.g || 'THE BASICS', k.t, k.p || '', k.l
 fs.writeFileSync(path.join(out, 'knowledge.json'), JSON.stringify(knowledge));
 
 fs.writeFileSync(path.join(out, 'tides.json'), JSON.stringify(TIDES));
-fs.copyFileSync(path.join(web, 'land-10m.json'), path.join(out, 'land.json'));
 
 const size = (f) => (fs.statSync(path.join(out, f)).size / 1024).toFixed(0) + ' KB';
 console.log('beaches ' + beaches.length + ' (' + size('beaches.json') + '), knowledge topics ' + knowledge.length +
-  ', tide stations ' + TIDES.length + ', coastline ' + size('land.json'));
+  ', tide stations ' + TIDES.length + '');

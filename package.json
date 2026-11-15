@@ -1,7 +1,7 @@
 {
   "name": "surfplace-native",
   "main": "index.ts",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "private": true,
   "scripts": {
     "start": "expo start",
@@ -11,7 +11,8 @@
     "validate": "node scripts/check-sdk.cjs",
     "icons": "node scripts/make-icon.cjs",
     "data": "node tools/build-data.mjs",
-    "sounds": "node tools/make-sounds.cjs"
+    "sounds": "node tools/make-sounds.cjs",
+    "coast": "tsx tools/build-coast.ts"
   },
   "dependencies": {
     "@expo-google-fonts/press-start-2p": "^0.4.1",
