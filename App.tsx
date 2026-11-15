@@ -5,7 +5,7 @@ import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef } from 'react';
-import { Animated, InteractionManager, Pressable, View } from 'react-native';
+import { Animated, InteractionManager, Platform, Pressable, View } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { buildCoast } from './src/map/coast';
 import { BeachesScreen } from './src/screens/BeachesScreen';
@@ -17,8 +17,10 @@ import { C, F, PX } from './src/theme';
 import { ErrorBoundary } from './src/ui/ErrorBoundary';
 import { Icon, T } from './src/ui/kit';
 import { Banner, WaterBg } from './src/ui/Scenery';
+import { setupWeb } from './src/web';
 
 void SplashScreen.preventAutoHideAsync().catch(() => {});
+setupWeb();
 
 const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: 'forecast', label: 'FORECAST', icon: 'wave' },
@@ -100,14 +102,26 @@ function Gate() {
   return <Shell />;
 }
 
+// in a web browser the app is shown as a phone-width column, centred on a dark page
+function WebFrame({ children }: { children: React.ReactNode }) {
+  if (Platform.OS !== 'web') return <>{children}</>;
+  return (
+    <View style={{ flex: 1, backgroundColor: C.ink, alignItems: 'center' }}>
+      <View style={{ flex: 1, width: '100%', maxWidth: 480, backgroundColor: C.aqua, overflow: 'hidden' }}>{children}</View>
+    </View>
+  );
+}
+
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <ErrorBoundary name="app">
-        <StoreProvider>
-          <Gate />
-        </StoreProvider>
-      </ErrorBoundary>
-    </SafeAreaProvider>
+    <WebFrame>
+      <SafeAreaProvider>
+        <ErrorBoundary name="app">
+          <StoreProvider>
+            <Gate />
+          </StoreProvider>
+        </ErrorBoundary>
+      </SafeAreaProvider>
+    </WebFrame>
   );
 }

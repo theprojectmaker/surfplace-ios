@@ -250,6 +250,8 @@ function buildTrust(data: ForecastData, spot: Spot, units: Units): Report['trust
           : 'The forecast was ' + Math.abs(off) + '% too ' + (off > 0 ? 'small' : 'big') + ' compared with the buoy, so today and tomorrow have been corrected.',
       });
     }
+  } else if (lv && lv.buoyError) {
+    out.push({ k: 'LIVE BUOYS', text: 'The live buoy feed could not be loaded here (web browsers are blocked from it), so this shows the forecast and official tides only. The iPhone app shows the live buoy readings and checks the forecast against them.' });
   } else if (lv) {
     out.push({ k: 'NO BUOY NEARBY', text: 'No wave buoy is reporting near this beach, so this is forecast only. Treat it as a guide.' });
   } else {

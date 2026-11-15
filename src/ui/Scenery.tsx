@@ -26,7 +26,7 @@ function useDrift(distance: number, ms: number, run = true) {
 
 const TILE_W = 96, TILE_H = 72;
 export function WaterBg() {
-  const { width } = useWindowDimensions();
+  const width = Math.min(useWindowDimensions().width, 480);
   const still = useStill();
   const x = useDrift(TILE_W, 16000, !still);
   return (
@@ -61,7 +61,7 @@ export function Banner({ top }: { top: number }) {
   const still = useStill();
   const sea = useDrift(40, 2400, !still);
   const cloud = useRef(new Animated.Value(0)).current;
-  const { width } = useWindowDimensions();
+  const width = Math.min(useWindowDimensions().width, 480);
   useEffect(() => {
     if (still) return;
     const a = Animated.loop(Animated.timing(cloud, { toValue: 1, duration: 60000, easing: Easing.linear, useNativeDriver: true }));

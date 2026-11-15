@@ -45,6 +45,17 @@
       "eas": {
         "projectId": "359e46ed-533a-4d20-977d-dccd5db776cf"
       }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/icon.png",
+      "name": "SurfPlace",
+      "shortName": "SurfPlace",
+      "description": "All the surf knowledge you need in one app.",
+      "themeColor": "#1e9bd7",
+      "backgroundColor": "#0b2545",
+      "lang": "en"
     }
   }
 }

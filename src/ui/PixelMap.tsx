@@ -2,7 +2,7 @@
 // the coast to get the nearest beach (or that exact spot). The land and the moving waves are
 // drawn by the app itself from the coastline data, so it works with no map service.
 import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, LayoutChangeEvent, PanResponder, Pressable, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, Animated, LayoutChangeEvent, PanResponder, Platform, Pressable, StyleSheet, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 import { BEACHES, sameSpot } from '../data/beaches';
 import { km as distKm } from '../engine/live';
@@ -196,7 +196,7 @@ export const PixelMap = memo(function PixelMap({ spot, onPick, active, inset }: 
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.sea, overflow: 'hidden' }} onLayout={onLayout} {...responder.panHandlers}>
+    <View style={[{ flex: 1, backgroundColor: C.sea, overflow: 'hidden' }, Platform.OS === 'web' ? ({ touchAction: 'none' } as object) : null]} onLayout={onLayout} {...responder.panHandlers}>
       {raster ? (
         <Animated.View style={{
           position: 'absolute', left: -padX, top: -padY, width: cols * CELL, height: rows * CELL,

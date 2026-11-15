@@ -12,7 +12,7 @@ export type Buoy = {
 };
 export type TideEvent = { t: string; v: number; type: 'H' | 'L' };
 export type TideData = { station: { id: string; name: string; km: number }; hilo: TideEvent[] };
-export type LiveData = { buoy: Buoy | null; wind: Buoy | null; water: Buoy | null; tide: TideData | null };
+export type LiveData = { buoy: Buoy | null; wind: Buoy | null; water: Buoy | null; tide: TideData | null; buoyError: boolean };
 
 type Row = Omit<Buoy, 'km'>;
 
@@ -103,7 +103,7 @@ async function tidesFor(lat: number, lon: number): Promise<TideData | null> {
 
 // Everything measured near a spot, or null if NOAA could not be reached at all.
 export async function getLive(spot: Pick<Spot, 'lat' | 'lon'>): Promise<LiveData | null> {
-  const out: LiveData = { buoy: null, wind: null, water: null, tide: null };
+  const out: LiveData = { buoy: null, wind: null, water: null, tide: null, buoyError: false };
   let reached = false;
   try {
     const rows = await buoyRows();
@@ -111,7 +111,7 @@ export async function getLive(spot: Pick<Spot, 'lat' | 'lon'>): Promise<LiveData
     out.buoy = nearest(rows, spot.lat, spot.lon, (r) => r.wvht !== null && (r.dpd !== null || r.apd !== null), 300);
     out.wind = nearest(rows, spot.lat, spot.lon, (r) => r.wspd !== null && r.wdir !== null, 50);
     out.water = nearest(rows, spot.lat, spot.lon, (r) => r.wtmp !== null, 120);
-  } catch { /* buoys unavailable */ }
+  } catch { out.buoyError = true; /* buoys unavailable (a browser blocks this feed) */ }
   try {
     out.tide = await tidesFor(spot.lat, spot.lon);
     if (out.tide) reached = true;
