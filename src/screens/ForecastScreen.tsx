@@ -58,6 +58,16 @@ export function ForecastScreen() {
   const data = st.status === 'ready' ? st.data : null;
   const report = useMemo(() => (data && spot ? buildReport(data, spot, s.skill, s.units) : null), [data, spot, s.skill, s.units]);
 
+  // tell the top bar how this beach looks right now
+  const setStatus = s.setStatus;
+  useEffect(() => {
+    if (!report || !data) return;
+    const r = report.rated[data.now];
+    if (!r) return;
+    const water = report.now.find((x) => x.k === 'WATER');
+    setStatus({ chip: CHIP[r.label], cls: r.cls, size: r.ft < 1 ? 'Flat' : sizeText(r.m, s.units), water: water ? water.v : null });
+  }, [report, data, s.units, setStatus]);
+
   // new beach: close any open day
   useEffect(() => { setOpenDay(null); setTrustOpen(false); setNearby(null); }, [spot]);
 

@@ -1,9 +1,8 @@
-import * as Location from 'expo-location';
 import React, { useMemo, useState } from 'react';
 import { FlatList, Modal, TextInput, View } from 'react-native';
 import { BEACHES, regions, search } from '../data/beaches';
 import { dist } from '../engine/format';
-import { km } from '../engine/live';
+import { nearestSpot } from '../engine/where';
 import { Spot } from '../engine/types';
 import { fx } from '../sound';
 import { useStore } from '../store';
@@ -28,20 +27,11 @@ export function BeachesScreen() {
   const nearMe = async () => {
     fx.tap();
     setHint('Finding the closest surf beach...');
-    try {
-      const perm = await Location.requestForegroundPermissionsAsync();
-      if (!perm.granted) { setHint('Location is off for SurfPlace. Turn it on in Settings, or search for a beach.'); return; }
-      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      // your location stays on this phone: it is only compared with the beach list
-      let best: Spot | null = null, bd = Infinity;
-      for (const b of BEACHES) {
-        const d = km(pos.coords.latitude, pos.coords.longitude, b.lat, b.lon);
-        if (d < bd) { bd = d; best = b; }
-      }
-      if (best) { setHint('Closest surf beach: ' + best.name + ', about ' + dist(bd, s.units) + ' away.'); s.pick(best); }
-    } catch {
-      setHint('Could not get your location. Search for a beach, or tap the map.');
-    }
+    // your location stays on this phone: it is only compared with the beach list
+    const me = await s.locate(true);
+    if (!me) { setHint('Could not get your location. Turn it on for SurfPlace in Settings, or search for a beach.'); return; }
+    const n = nearestSpot(BEACHES, me.lat, me.lon);
+    if (n) { setHint('Closest surf beach: ' + n.spot.name + ', about ' + dist(n.km, s.units) + ' away.'); s.pick(n.spot); }
   };
 
   return (

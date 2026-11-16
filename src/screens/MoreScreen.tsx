@@ -118,7 +118,7 @@ export function MoreScreen() {
           <T size={22} color={C.seaDeep} style={{ textDecorationLine: 'underline' }}>open-meteo.com</T>
         </Press>
         <T size={19} color={C.inkSoft} style={{ marginTop: 10 }}>
-          Your location is only used when you tap NEAR ME, and it never leaves your phone.
+          Your location stays on your phone. It shows where you are in the top bar and finds the nearest beach. On an iPhone the town name comes from Apple Maps.
         </T>
       </Box>
     </ScrollView>

@@ -16,7 +16,8 @@ import { StoreProvider, Tab, useStore } from './src/store';
 import { C, F, PX } from './src/theme';
 import { ErrorBoundary } from './src/ui/ErrorBoundary';
 import { Icon, T } from './src/ui/kit';
-import { Banner, WaterBg } from './src/ui/Scenery';
+import { WaterBg } from './src/ui/Scenery';
+import { TopBar } from './src/ui/TopBar';
 import { setupWeb } from './src/web';
 
 void SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -82,7 +83,7 @@ function Shell() {
     <View style={{ flex: 1, backgroundColor: C.aqua }}>
       <StatusBar style="dark" />
       <WaterBg />
-      <Banner top={insets.top} />
+      <TopBar top={insets.top} />
       <View style={{ flex: 1 }}>
         <Pane active={s.tab === 'forecast'}><ErrorBoundary name="forecast"><ForecastScreen /></ErrorBoundary></Pane>
         {seenMap.current ? <Pane active={s.tab === 'map'}><ErrorBoundary name="beaches"><BeachesScreen /></ErrorBoundary></Pane> : null}
