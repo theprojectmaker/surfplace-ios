@@ -1,24 +1,24 @@
-// The live pixel map: pan with one finger, pinch to zoom, tap a flag to pick a beach, or tap
-// the coast to get the nearest beach (or that exact spot). The land and the moving waves are
-// drawn by the app itself from the coastline data, so it works with no map service.
+// The live pixel map. One finger drags (and glides when you flick), two fingers pinch about the
+// spot between them, double-tap zooms in on the spot you tapped, the + and - buttons zoom
+// smoothly. Tap a flag to pick a beach, or tap the coast for the nearest beach (or that exact
+// spot). The land and the moving waves are drawn by the app itself from the coastline data.
 import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, LayoutChangeEvent, PanResponder, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, Animated, Easing, LayoutChangeEvent, PanResponder, Platform, Pressable, StyleSheet, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 import { BEACHES, sameSpot } from '../data/beaches';
 import { km as distKm } from '../engine/live';
 import { Spot } from '../engine/types';
+import { clamp, gestureTransform, MapView, viewAfter, zoomAbout, Pt, Xf } from '../map/gesture';
 import { COLORS, latToWy, lonToWx, Raster, rasterize, waves, wxToLon, wyToLat } from '../map/raster';
 import { fx } from '../sound';
 import { C, PX } from '../theme';
-import { Box, Press, T } from './kit';
+import { Box, Icon, Press, T } from './kit';
 
 const CELL = 6;       // one map "pixel" = 6 screen points
-const PAD = 0.4;      // extra map drawn around the screen, so dragging never shows a blank edge
+const PAD = 0.5;      // extra map drawn around the screen, so dragging and gliding never show a blank edge
 const MIN_Z = 2, MAX_Z = 11;
-const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
-const wrap = (v: number) => ((v % 1) + 1) % 1;
+const IDENTITY: Xf = { tx: 0, ty: 0, s: 1 };
 
-type MapView = { cx: number; cy: number; z: number };
 type Tap = { x: number; y: number; lat: number; lon: number; beach: Spot | null; km: number };
 
 const StaticLayer = memo(function StaticLayer({ r }: { r: Raster }) {
@@ -82,12 +82,26 @@ export const PixelMap = memo(function PixelMap({ spot, onPick, active, inset }: 
   const [still, setStill] = useState(false);
   useEffect(() => { AccessibilityInfo.isReduceMotionEnabled().then(setStill).catch(() => {}); }, []);
 
+  // the picture's live offset and scale while a finger is down or an animation runs
   const tx = useRef(new Animated.Value(0)).current;
   const ty = useRef(new Animated.Value(0)).current;
   const sc = useRef(new Animated.Value(1)).current;
+  const cur = useRef<Xf>({ ...IDENTITY }).current;
+  useEffect(() => {
+    const a = tx.addListener(({ value }) => { cur.tx = value; });
+    const b = ty.addListener(({ value }) => { cur.ty = value; });
+    const c = sc.addListener(({ value }) => { cur.s = value; });
+    return () => { tx.removeListener(a); ty.removeListener(b); sc.removeListener(c); };
+  }, [tx, ty, sc, cur]);
+
   const viewRef = useRef(view);
   viewRef.current = view;
-  const g = useRef({ startDist: 0, scale: 1, dx: 0, dy: 0 }).current;
+  const stillRef = useRef(still);
+  stillRef.current = still;
+  const pad = useRef({ x: 0, y: 0 }).current;
+  const box = useRef<View>(null);
+  const origin = useRef({ x: 0, y: 0, w: 0, h: 0 }).current;
+  const anim = useRef<Animated.CompositeAnimation | null>(null);
 
   // keep the map centred on the chosen beach when it changes
   const first = useRef(true);
@@ -100,46 +114,99 @@ export const PixelMap = memo(function PixelMap({ spot, onPick, active, inset }: 
   // a new view means the artwork was redrawn: drop the drag/pinch offsets in the same frame
   useLayoutEffect(() => { tx.setValue(0); ty.setValue(0); sc.setValue(1); }, [view, tx, ty, sc]);
 
-  const finish = useCallback(() => {
+  const commit = useCallback((t: Pt, s: number) => { setView(viewAfter(viewRef.current, t, s, MIN_Z, MAX_Z)); }, []);
+
+  // glide / zoom animation of the picture, then redraw at the new place
+  const animateTo = useCallback((t: Pt, s: number, ms: number) => {
+    anim.current?.stop();
+    const run = Animated.parallel([
+      Animated.timing(tx, { toValue: t.x, duration: ms, easing: Easing.out(Easing.cubic), useNativeDriver: false }),
+      Animated.timing(ty, { toValue: t.y, duration: ms, easing: Easing.out(Easing.cubic), useNativeDriver: false }),
+      Animated.timing(sc, { toValue: s, duration: ms, easing: Easing.out(Easing.cubic), useNativeDriver: false }),
+    ]);
+    anim.current = run;
+    run.start(({ finished }) => { if (finished && anim.current === run) { anim.current = null; commit(t, s); } });
+    // safety net: if the animation never finishes (app sent to the background, say), still land on the new view
+    setTimeout(() => { if (anim.current === run) { run.stop(); anim.current = null; commit(t, s); } }, ms + 400);
+  }, [commit, sc, tx, ty]);
+
+  // zoom by `d` levels, about a point (relative to the centre of the view) if given
+  const zoomStep = useCallback((d: number, focus?: Pt) => {
     const v = viewRef.current;
-    const nz = clamp(v.z + Math.log2(g.scale), MIN_Z, MAX_Z);
-    const sNew = 256 * Math.pow(2, nz);
-    const next = { cx: wrap(v.cx - g.dx / sNew), cy: clamp(v.cy - g.dy / sNew, 0.03, 0.97), z: nz };
-    g.startDist = 0; g.scale = 1; g.dx = 0; g.dy = 0;
-    setView(next);
-  }, [g]);
+    const nz = clamp(v.z + d, MIN_Z, MAX_Z);
+    const s = Math.pow(2, nz - v.z);
+    if (Math.abs(s - 1) < 1e-6) return;
+    const xf = zoomAbout(focus || { x: 0, y: 0 }, s);
+    setTap(null);
+    if (stillRef.current) commit({ x: xf.tx, y: xf.ty }, xf.s);
+    else animateTo({ x: xf.tx, y: xf.ty }, xf.s, 230);
+  }, [animateTo, commit]);
+
+  // ---- finger gestures ----
+  const g = useRef({ base: { ...IDENTITY } as Xf, f0: { x: 0, y: 0 }, d0: 0, n: 0 }).current;
+  const touchInfo = (e: { nativeEvent: { touches?: ArrayLike<{ pageX: number; pageY: number }> } }, st: { moveX: number; moveY: number; x0: number; y0: number }, grant: boolean) => {
+    const t = e.nativeEvent.touches;
+    const n = t && t.length ? t.length : 1;
+    let x: number, y: number, d = 0;
+    if (t && t.length >= 2) {
+      x = (t[0].pageX + t[1].pageX) / 2; y = (t[0].pageY + t[1].pageY) / 2;
+      d = Math.hypot(t[0].pageX - t[1].pageX, t[0].pageY - t[1].pageY);
+    } else { x = grant ? st.x0 : st.moveX; y = grant ? st.y0 : st.moveY; }
+    return { n, d, m: { x: x - origin.x - origin.w / 2, y: y - origin.y - origin.h / 2 } };
+  };
 
   const responder = useMemo(() => {
-    const wants = (e: { nativeEvent: { touches: unknown[] } }, s: { dx: number; dy: number }) =>
-      e.nativeEvent.touches.length >= 2 || Math.abs(s.dx) > 6 || Math.abs(s.dy) > 6;
+    const wants = (e: { nativeEvent: { touches?: ArrayLike<unknown> } }, s: { dx: number; dy: number }) =>
+      (e.nativeEvent.touches ? e.nativeEvent.touches.length >= 2 : false) || Math.abs(s.dx) > 6 || Math.abs(s.dy) > 6;
+    const end = (_e: unknown, st: { vx: number; vy: number }) => {
+      const t = { x: cur.tx, y: cur.ty }, s = cur.s;
+      const speed = Math.hypot(st.vx, st.vy);
+      if (g.n <= 1 && !stillRef.current && speed > 0.35 && Math.abs(s - 1) < 0.02) {
+        // a flick: let the map glide on a little, but never past the part that is drawn
+        const target = { x: clamp(t.x + st.vx * 260, -pad.x * 0.9, pad.x * 0.9), y: clamp(t.y + st.vy * 260, -pad.y * 0.9, pad.y * 0.9) };
+        animateTo(target, s, 380);
+      } else commit(t, s);
+    };
     return PanResponder.create({
       onStartShouldSetPanResponder: () => false,
       onMoveShouldSetPanResponder: (e, s) => wants(e, s),
       onMoveShouldSetPanResponderCapture: (e, s) => wants(e, s),
-      onPanResponderGrant: () => { g.startDist = 0; g.scale = 1; setTap(null); },
-      onPanResponderMove: (e, s) => {
-        const t = e.nativeEvent.touches;
-        if (t.length >= 2) {
-          const d = Math.hypot(t[0].pageX - t[1].pageX, t[0].pageY - t[1].pageY);
-          if (!g.startDist) g.startDist = d;
-          g.scale = clamp(d / g.startDist, 0.4, 3);
-          sc.setValue(g.scale);
-        }
-        g.dx = s.dx; g.dy = s.dy;
-        tx.setValue(s.dx); ty.setValue(s.dy);
+      onPanResponderGrant: (e, st) => {
+        box.current?.measureInWindow((x, y, w, h) => { origin.x = x; origin.y = y; origin.w = w; origin.h = h; });
+        setTap(null);
+        if (anim.current) { anim.current.stop(); anim.current = null; commit({ x: cur.tx, y: cur.ty }, cur.s); } // grabbed mid-glide
+        const r = touchInfo(e, st, true);
+        g.base = { ...IDENTITY }; g.f0 = r.m; g.d0 = r.d; g.n = r.n;
       },
-      onPanResponderRelease: finish,
-      onPanResponderTerminate: finish,
+      onPanResponderMove: (e, st) => {
+        const r = touchInfo(e, st, false);
+        if (r.n !== g.n) { // a finger landed or lifted: carry on from where the picture is now
+          g.base = { tx: cur.tx, ty: cur.ty, s: cur.s }; g.f0 = r.m; g.d0 = r.d; g.n = r.n;
+          return;
+        }
+        const zl = viewRef.current.z;
+        const sMin = Math.pow(2, MIN_Z - zl), sMax = Math.pow(2, MAX_Z - zl);
+        let k = r.n >= 2 && g.d0 > 0 ? r.d / g.d0 : 1;
+        const s = clamp(g.base.s * k, sMin, sMax);
+        k = s / g.base.s;
+        const x = gestureTransform(g.base, g.f0, r.m, k);
+        tx.setValue(x.tx); ty.setValue(x.ty); sc.setValue(x.s);
+      },
+      onPanResponderRelease: end,
+      onPanResponderTerminate: end,
     });
-  }, [finish, g, sc, tx, ty]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [animateTo, commit]);
 
   const onLayout = (e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
     setSize((s) => (Math.abs(s.w - width) < 1 && Math.abs(s.h - height) < 1 ? s : { w: Math.round(width), h: Math.round(height) }));
+    box.current?.measureInWindow((x, y, w, h) => { origin.x = x; origin.y = y; origin.w = w; origin.h = h; });
   };
 
   const cols = Math.ceil((size.w * (1 + 2 * PAD)) / CELL), rows = Math.ceil((size.h * (1 + 2 * PAD)) / CELL);
   const padX = (cols * CELL - size.w) / 2, padY = (rows * CELL - size.h) / 2;
+  pad.x = padX; pad.y = padY;
   const S = 256 * Math.pow(2, view.z);
 
   const raster = useMemo(() => (size.w > 0 ? rasterize(view.cx, view.cy, view.z, cols, rows, CELL) : null), [view, cols, rows, size.w]);
@@ -155,7 +222,7 @@ export const PixelMap = memo(function PixelMap({ spot, onPick, active, inset }: 
   const flags = useMemo(() => {
     if (!size.w) return [];
     const out: { spot: Spot; x: number; y: number }[] = [];
-    const cw = showLabels ? 150 : 46, ch = showLabels ? 46 : 46, taken = new Set<string>();
+    const cw = showLabels ? 150 : 46, ch = 46, taken = new Set<string>();
     for (const b of BEACHES) {
       if (out.length >= 90) break;
       if (view.z < 6 && !b.top) continue;
@@ -172,8 +239,18 @@ export const PixelMap = memo(function PixelMap({ spot, onPick, active, inset }: 
 
   const here = useMemo(() => (size.w ? project(spot.lat, spot.lon) : null), [project, spot, size.w]);
 
+  const lastTap = useRef<{ t: number; x: number; y: number } | null>(null);
   const onBackgroundTap = (x: number, y: number) => {
-    const wx = view.cx + (x - padX - size.w / 2) / S, wy = view.cy + (y - padY - size.h / 2) / S;
+    const now = Date.now(), prev = lastTap.current;
+    const rel = { x: x - padX - size.w / 2, y: y - padY - size.h / 2 };
+    if (prev && now - prev.t < 320 && Math.hypot(x - prev.x, y - prev.y) < 40) {
+      lastTap.current = null; // double tap: zoom in on that spot
+      fx.tap();
+      zoomStep(1, rel);
+      return;
+    }
+    lastTap.current = { t: now, x, y };
+    const wx = view.cx + rel.x / S, wy = view.cy + rel.y / S;
     if (wy < 0 || wy > 1) return;
     const lat = wyToLat(wy), lon = wxToLon(wx);
     let beach: Spot | null = null, best = Infinity;
@@ -185,7 +262,10 @@ export const PixelMap = memo(function PixelMap({ spot, onPick, active, inset }: 
     setTap({ x, y, lat, lon, beach: beach && best < 60 ? beach : null, km: best });
   };
 
-  const zoomBy = (d: number) => { fx.tap(); setTap(null); setView((v) => ({ ...v, z: clamp(Math.round(v.z) + d, MIN_Z, MAX_Z) })); };
+  const recenter = () => {
+    fx.tap(); setTap(null);
+    setView({ cx: lonToWx(spot.lon), cy: latToWy(spot.lat), z: Math.max(viewRef.current.z, 10) });
+  };
 
   const pickCustom = (t: Tap) => {
     const ns = (lat: number) => Math.abs(lat).toFixed(2) + '°' + (lat >= 0 ? 'N' : 'S');
@@ -196,7 +276,7 @@ export const PixelMap = memo(function PixelMap({ spot, onPick, active, inset }: 
   };
 
   return (
-    <View style={[{ flex: 1, backgroundColor: C.sea, overflow: 'hidden' }, Platform.OS === 'web' ? ({ touchAction: 'none' } as object) : null]} onLayout={onLayout} {...responder.panHandlers}>
+    <View ref={box} style={[{ flex: 1, backgroundColor: C.sea, overflow: 'hidden' }, Platform.OS === 'web' ? ({ touchAction: 'none' } as object) : null]} onLayout={onLayout} {...responder.panHandlers}>
       {raster ? (
         <Animated.View style={{
           position: 'absolute', left: -padX, top: -padY, width: cols * CELL, height: rows * CELL,
@@ -205,7 +285,7 @@ export const PixelMap = memo(function PixelMap({ spot, onPick, active, inset }: 
           <StaticLayer r={raster} />
           <WaveLayer r={raster} run={active && !still} />
           <Pressable
-            accessibilityLabel="Map. Tap the coast to pick a spot." style={StyleSheet.absoluteFill}
+            accessibilityLabel="Map. Tap the coast to pick a spot. Double tap to zoom in." style={StyleSheet.absoluteFill}
             onPress={(e) => onBackgroundTap(e.nativeEvent.locationX, e.nativeEvent.locationY)}
           />
           {flags.map((f) => (
@@ -220,8 +300,9 @@ export const PixelMap = memo(function PixelMap({ spot, onPick, active, inset }: 
       ) : null}
 
       <View style={{ position: 'absolute', right: 12, top: inset.top, gap: 10 }}>
-        <Press label="Zoom in" onPress={() => zoomBy(1)}><Box pad={0}><View style={zoomBtn}><T px size={16}>+</T></View></Box></Press>
-        <Press label="Zoom out" onPress={() => zoomBy(-1)}><Box pad={0}><View style={zoomBtn}><T px size={16}>-</T></View></Box></Press>
+        <Press label="Zoom in" onPress={() => { fx.tap(); zoomStep(1); }}><Box pad={0}><View style={zoomBtn}><T px size={16}>+</T></View></Box></Press>
+        <Press label="Zoom out" onPress={() => { fx.tap(); zoomStep(-1); }}><Box pad={0}><View style={zoomBtn}><T px size={16}>-</T></View></Box></Press>
+        <Press label="Back to the chosen beach" onPress={recenter}><Box pad={0} bg={C.sun}><View style={zoomBtn}><Icon name="pin" size={22} color={C.ink} /></View></Box></Press>
       </View>
       <View pointerEvents="none" style={{ position: 'absolute', right: 0, bottom: inset.bottom - 4, backgroundColor: 'rgba(246,253,255,0.85)', paddingHorizontal: 5 }}>
         <T size={14} color={C.inkSoft}>Coast: Natural Earth · Beaches: USGS, OSM</T>
