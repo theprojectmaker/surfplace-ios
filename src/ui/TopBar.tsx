@@ -43,9 +43,9 @@ export function TopBar({ top }: { top: number }) {
 
       {/* where you are; tap to find (or refresh) your position */}
       <Press label={s.me ? 'Refresh my location' : 'Show where I am'} onPress={() => { fx.tap(); void s.locate(true); }} style={{ marginTop: 8 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(11,37,69,0.22)', paddingHorizontal: 8, minHeight: 30 }}>
-          <Icon name="pin" size={18} color={s.me ? C.sun : '#eaf8ff'} />
-          <T fit size={17} color={C.white} style={{ flex: 1, textDecorationLine: s.me ? 'none' : 'underline' }}>{line}</T>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(11,37,69,0.28)', paddingHorizontal: 10, paddingVertical: 5, minHeight: 40 }}>
+          <Icon name="pin" size={24} color={s.me ? C.sun : '#eaf8ff'} />
+          <T numberOfLines={2} size={23} color={C.white} style={{ flex: 1, textDecorationLine: s.me ? 'none' : 'underline' }}>{line}</T>
         </View>
       </Press>
     </View>

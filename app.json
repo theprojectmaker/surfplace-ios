@@ -2,7 +2,7 @@
   "expo": {
     "name": "SurfPlace",
     "slug": "surfplace",
-    "version": "2.0.3",
+    "version": "2.0.4",
     "orientation": "portrait",
     "scheme": "surfplace",
     "userInterfaceStyle": "light",
