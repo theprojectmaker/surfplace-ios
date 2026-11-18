@@ -17,6 +17,7 @@ export type Hour = {
   i: number; day: number; hour: number; time: string;
   H: number | null; T: number | null; D: number | null;
   swH: number | null; swT: number | null; swD: number | null;
+  sw2H?: number | null; sw2T?: number | null; sw2D?: number | null;
   wwH: number | null; wwT: number | null; wwD: number | null;
   sst: number | null; tide: number | null;
   wind: number; windDir: number; gust: number; air: number | null; code: number;
@@ -81,7 +82,8 @@ export async function loadForecast(spot: Pick<Spot, 'lat' | 'lon'>): Promise<For
     '&models=ecmwf_wam025,ncep_gfswave025,meteofrance_wave').catch(() => null);
   const [m, w] = await Promise.all([
     getJSON(MARINE + '?' + q + '&cell_selection=sea&hourly=wave_height,wave_direction,wave_period,' +
-      'swell_wave_height,swell_wave_direction,swell_wave_period,wind_wave_height,wind_wave_direction,' +
+      'swell_wave_height,swell_wave_direction,swell_wave_period,secondary_swell_wave_height,' +
+      'secondary_swell_wave_direction,secondary_swell_wave_period,wind_wave_height,wind_wave_direction,' +
       'wind_wave_period,sea_surface_temperature,sea_level_height_msl'),
     getJSON(WEATHER + '?' + q + '&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m,temperature_2m,' +
       'weather_code,uv_index,precipitation_probability&daily=sunrise,sunset'),
@@ -98,6 +100,9 @@ export async function loadForecast(spot: Pick<Spot, 'lat' | 'lon'>): Promise<For
       i, day, hour, time: mh.time[i],
       H: num(mh.wave_height[i]), T: num(mh.wave_period[i]), D: num(mh.wave_direction[i]),
       swH: num(mh.swell_wave_height[i]), swT: num(mh.swell_wave_period[i]), swD: num(mh.swell_wave_direction[i]),
+      sw2H: num(mh.secondary_swell_wave_height && mh.secondary_swell_wave_height[i]),
+      sw2T: num(mh.secondary_swell_wave_period && mh.secondary_swell_wave_period[i]),
+      sw2D: num(mh.secondary_swell_wave_direction && mh.secondary_swell_wave_direction[i]),
       wwH: num(mh.wind_wave_height[i]), wwT: num(mh.wind_wave_period[i]), wwD: num(mh.wind_wave_direction[i]),
       sst: num(mh.sea_surface_temperature[i]), tide: num(mh.sea_level_height_msl[i]),
       wind: num(wh.wind_speed_10m[i]) || 0, windDir: num(wh.wind_direction_10m[i]) || 0,
@@ -195,6 +200,7 @@ export async function loadForecast(spot: Pick<Spot, 'lat' | 'lon'>): Promise<For
             const f = 1 + (ratio - 1) * Math.exp(-Math.max(0, h.i - now) / 18);
             if (h.H !== null) h.H *= f;
             if (h.swH !== null) h.swH *= f;
+            if (h.sw2H != null) h.sw2H *= f;
             if (h.wwH !== null) h.wwH *= f;
           });
         }
@@ -230,17 +236,19 @@ function dirFactor(from: number | null, facing: number | null): number {
 // Longer-period swell shoals up and breaks bigger than its open-ocean height.
 const shoal = (t: number | null) => clamp(0.55 + ((t || 6) - 5) * 0.085, 0.5, 1.75);
 
-type WaveParts = Pick<Hour, 'H' | 'T' | 'D' | 'swH' | 'swT' | 'swD' | 'wwH' | 'wwT' | 'wwD'>;
+type WaveParts = Pick<Hour, 'H' | 'T' | 'D' | 'swH' | 'swT' | 'swD' | 'sw2H' | 'sw2T' | 'sw2D' | 'wwH' | 'wwT' | 'wwD'>;
 
-// Estimated breaking wave face, in meters.
+// Estimated breaking wave face, in meters. Swell trains and wind chop add as energy (RMS),
+// each scaled for how much shoals up and how squarely it hits this beach.
 export function face(h: WaveParts, facing: number | null): number | null {
   if (h.swH === null && h.wwH === null) {
     if (h.H === null) return null;
     return h.H * shoal(h.T) * dirFactor(h.D, facing);
   }
   const sw = (h.swH || 0) * shoal(h.swT) * dirFactor(h.swD, facing);
+  const sw2 = (h.sw2H || 0) * shoal(h.sw2T ?? null) * dirFactor(h.sw2D ?? null, facing);
   const ww = (h.wwH || 0) * shoal(h.wwT) * 0.8 * dirFactor(h.wwD, facing);
-  return Math.sqrt(sw * sw + ww * ww);
+  return Math.sqrt(sw * sw + sw2 * sw2 + ww * ww);
 }
 
 export function windInfo(h: Pick<Hour, 'wind' | 'windDir'>, facing: number | null): WindInfo {

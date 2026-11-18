@@ -4,15 +4,16 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { DEFAULT_SPOT, restoreSpot, sameSpot } from './data/beaches';
 import { Cls } from './engine/forecast';
+import { Session } from './engine/journal';
 import { Skill, Spot, Units } from './engine/types';
 import { Me } from './engine/where';
 import { setPrefs } from './sound';
 
 const KEY = 'surfplace.v2';
-export type Tab = 'forecast' | 'map' | 'more';
+export type Tab = 'forecast' | 'map' | 'log' | 'more';
 export type Status = { chip: string; cls: Cls; size: string; water: string | null };
 
-type Saved = { spot: Spot | null; favs: Spot[]; skill: Skill; units: Units; sound: boolean; ocean: boolean; haptics: boolean };
+type Saved = { spot: Spot | null; favs: Spot[]; skill: Skill; units: Units; sound: boolean; ocean: boolean; haptics: boolean; journal: Session[] };
 type Ctx = Saved & {
   ready: boolean;
   tab: Tab;
@@ -30,9 +31,12 @@ type Ctx = Saved & {
   toggleFav: () => void;
   isFav: boolean;
   set: <K extends keyof Saved>(k: K, v: Saved[K]) => void;
+  addSession: (s: Session) => void;
+  updateSession: (s: Session) => void;
+  deleteSession: (id: string) => void;
 };
 
-const defaults: Saved = { spot: null, favs: [], skill: 'intermediate', units: 'us', sound: true, ocean: false, haptics: true };
+const defaults: Saved = { spot: null, favs: [], skill: 'intermediate', units: 'us', sound: true, ocean: false, haptics: true, journal: [] };
 const StoreCtx = createContext<Ctx | null>(null);
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
@@ -82,6 +86,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             ...defaults, ...j,
             spot: restoreSpot(j.spot) || DEFAULT_SPOT,
             favs: (j.favs || []).map(restoreSpot).filter((x): x is Spot => !!x),
+            journal: Array.isArray(j.journal) ? j.journal.filter((s) => s && typeof s.id === 'string') : [],
           };
         } else {
           next = { ...defaults, spot: DEFAULT_SPOT };
@@ -121,10 +126,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const addSession = useCallback((sess: Session) => setSaved((x) => ({ ...x, journal: [sess, ...x.journal] })), []);
+  const updateSession = useCallback((sess: Session) => setSaved((x) => ({ ...x, journal: x.journal.map((s) => (s.id === sess.id ? sess : s)) })), []);
+  const deleteSession = useCallback((id: string) => setSaved((x) => ({ ...x, journal: x.journal.filter((s) => s.id !== id) })), []);
+
   const value = useMemo<Ctx>(() => ({
     ...saved, ready, tab, announce, me, status, setStatus, locate, go: setTab, pick, toggleFav, set,
+    addSession, updateSession, deleteSession,
     isFav: !!saved.spot && saved.favs.some((f) => sameSpot(f, saved.spot)),
-  }), [saved, ready, tab, announce, me, status, locate, pick, toggleFav, set]);
+  }), [saved, ready, tab, announce, me, status, locate, pick, toggleFav, set, addSession, updateSession, deleteSession]);
 
   return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>;
 }

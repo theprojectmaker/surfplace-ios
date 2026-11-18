@@ -10,6 +10,7 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 import { buildCoast } from './src/map/coast';
 import { BeachesScreen } from './src/screens/BeachesScreen';
 import { ForecastScreen } from './src/screens/ForecastScreen';
+import { JournalScreen } from './src/screens/JournalScreen';
 import { MoreScreen } from './src/screens/MoreScreen';
 import { fx, warmUp } from './src/sound';
 import { StoreProvider, Tab, useStore } from './src/store';
@@ -26,6 +27,7 @@ setupWeb();
 const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: 'forecast', label: 'FORECAST', icon: 'wave' },
   { key: 'map', label: 'BEACHES', icon: 'pin' },
+  { key: 'log', label: 'LOG', icon: 'log' },
   { key: 'more', label: 'MORE', icon: 'star' },
 ];
 
@@ -87,6 +89,7 @@ function Shell() {
       <View style={{ flex: 1 }}>
         <Pane active={s.tab === 'forecast'}><ErrorBoundary name="forecast"><ForecastScreen /></ErrorBoundary></Pane>
         {seenMap.current ? <Pane active={s.tab === 'map'}><ErrorBoundary name="beaches"><BeachesScreen /></ErrorBoundary></Pane> : null}
+        <Pane active={s.tab === 'log'}><ErrorBoundary name="log"><JournalScreen /></ErrorBoundary></Pane>
         <Pane active={s.tab === 'more'}><ErrorBoundary name="more"><MoreScreen /></ErrorBoundary></Pane>
       </View>
       <TabBar bottom={insets.bottom} />

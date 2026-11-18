@@ -2,13 +2,15 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, LayoutAnimation, Linking, RefreshControl, ScrollView, View } from 'react-native';
 import { BEACHES, sameSpot } from '../data/beaches';
 import { Cls } from '../engine/forecast';
+import { ratingReasons, swellTrains, trainText } from '../engine/detail';
 import { ago, CHIP, dist, hourLabel, sizeText } from '../engine/format';
-import { loadNearby, NearbySpot } from '../engine/nearby';
+import { loadNearby, loadSpots, NearbySpot, SpotNow } from '../engine/nearby';
 import { buildReport } from '../engine/report';
 import { fx } from '../sound';
 import { useStore } from '../store';
 import { C, CLS, CLS_SOFT, PX } from '../theme';
 import { Arrow, Box, Chip, Divider, Heading, Icon, IconTile, Meter, PButton, Press, T } from '../ui/kit';
+import { SwellCompass } from '../ui/extra';
 import { PixelScene } from '../ui/PixelScene';
 import { DayPanel } from './DayPanel';
 import { keyOf, useForecast } from './useForecast';
@@ -53,10 +55,14 @@ export function ForecastScreen() {
   const { st, refresh, refreshing } = useForecast(spot);
   const [openDay, setOpenDay] = useState<number | null>(null);
   const [trustOpen, setTrustOpen] = useState(false);
+  const [whyOpen, setWhyOpen] = useState(false);
   const [nearby, setNearby] = useState<NearbySpot[] | null>(null);
+  const [mySpots, setMySpots] = useState<SpotNow[] | null>(null);
 
   const data = st.status === 'ready' ? st.data : null;
   const report = useMemo(() => (data && spot ? buildReport(data, spot, s.skill, s.units) : null), [data, spot, s.skill, s.units]);
+  const trains = useMemo(() => (data ? swellTrains(data.hours[data.now], s.units) : []), [data, s.units]);
+  const reasons = useMemo(() => (data && report ? ratingReasons(data, data.now, report.rated, s.units) : []), [data, report, s.units]);
 
   // tell the top bar how this beach looks right now
   const setStatus = s.setStatus;
@@ -69,7 +75,17 @@ export function ForecastScreen() {
   }, [report, data, s.units, setStatus]);
 
   // new beach: close any open day
-  useEffect(() => { setOpenDay(null); setTrustOpen(false); setNearby(null); }, [spot]);
+  useEffect(() => { setOpenDay(null); setTrustOpen(false); setWhyOpen(false); setNearby(null); }, [spot]);
+
+  // rank your saved beaches (only when you have a couple), once the report is up
+  const favKey = s.favs.map((f) => f.name).join('|') + s.skill;
+  useEffect(() => {
+    if (!data || s.favs.length < 2) { setMySpots(null); return; }
+    let live = true;
+    loadSpots(s.favs, s.skill).then((r) => { if (live) setMySpots(r); }).catch(() => { if (live) setMySpots(null); });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!data, favKey]);
 
   // announce the answer with a sound when the user has just picked a beach
   const announced = useRef(s.announce);
@@ -224,6 +240,79 @@ export function ForecastScreen() {
             })}
           </Box>
 
+          {report.hero.ft >= 0.8 && reasons.length ? (
+            <Box pad={0} style={{ marginTop: 16 }}>
+              <Press label={'Why it is rated ' + report.now[0].v} onPress={() => { fx.tap(); ease(); setWhyOpen(!whyOpen); }}
+                style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14 }}>
+                <T px size={10}>WHY {report.hero.verdict === 'epic' || report.hero.verdict === 'yes' ? 'IT IS GOOD' : report.hero.verdict === 'maybe' ? 'IT IS OK' : 'TO SKIP'}</T>
+                <T px size={14}>{whyOpen ? '-' : '+'}</T>
+              </Press>
+              {whyOpen ? (
+                <View style={{ paddingHorizontal: 14, paddingBottom: 12, gap: 8 }}>
+                  {reasons.map((r, i) => (
+                    <View key={i} style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
+                      <View style={{ width: 22, height: 22, backgroundColor: r.good ? C.good : C.poor, borderWidth: 2, borderColor: C.ink, alignItems: 'center', justifyContent: 'center' }}>
+                        <Icon name={r.good ? 'check' : 'wind'} size={14} color={C.ink} />
+                      </View>
+                      <T size={22} style={{ flex: 1 }}>{r.text}</T>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+            </Box>
+          ) : null}
+
+          {trains.length ? (
+            <>
+              <Heading>THE SWELL</Heading>
+              <Box pad={12}>
+                <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+                  <SwellCompass trains={trains} facing={spot.facing} size={132} />
+                  <View style={{ flex: 1, gap: 10 }}>
+                    {trains.map((t) => (
+                      <View key={t.kind} style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
+                        <View style={{ width: 12, height: 12, marginTop: 6, backgroundColor: t.kind === 'primary' ? C.seaDeep : t.kind === 'secondary' ? C.epic : C.flat, borderWidth: 2, borderColor: C.ink }} />
+                        <View style={{ flex: 1 }}>
+                          <T size={21}>{t.label}</T>
+                          <T size={19} color={C.inkSoft}>{trainText(t, s.units)} · {t.power}</T>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+                <T size={18} color={C.inkSoft} style={{ marginTop: 10 }}>
+                  Arrows show where each swell comes from; the sand line is the way your beach faces. A long-period primary swell hitting it head-on is the best.
+                </T>
+              </Box>
+            </>
+          ) : null}
+
+          {mySpots && mySpots.length >= 2 ? (
+            <>
+              <Heading>YOUR SPOTS TODAY</Heading>
+              <T size={21} color={C.inkSoft} style={{ marginTop: -6, marginBottom: 10 }}>Your saved beaches, best first. Tap one to open it.</T>
+              <Box pad={0}>
+                {mySpots.map((n, i) => (
+                  <View key={n.spot.id}>
+                    {i ? <Divider /> : null}
+                    <Press label={'Open ' + n.spot.name} onPress={() => { fx.select(); s.pick(n.spot); }}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 12, minHeight: 64 }}>
+                      <T px size={11} color={C.inkSoft} style={{ width: 20 }}>{i + 1}</T>
+                      <View style={{ flex: 1 }}>
+                        <T size={25} numberOfLines={1}>{n.spot.name}</T>
+                        <T size={19} color={C.inkSoft} numberOfLines={1}>{sameSpot(n.spot, spot) ? 'Showing now' : n.bestScore >= 30 ? 'Best ' + hourLabel(n.bestHour) : 'Quiet today'}</T>
+                      </View>
+                      <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                        <T size={24}>{sizeText(n.bestFt / 3.28084, s.units)}</T>
+                        <Chip label={CHIP[n.bestLabel]} color={CLS[n.bestCls]} style={{ minWidth: 64 }} />
+                      </View>
+                    </Press>
+                  </View>
+                ))}
+              </Box>
+            </>
+          ) : null}
+
           {nearby && nearby.length ? (
             <>
               <Heading>NEARBY BEACHES</Heading>
@@ -278,7 +367,20 @@ export function ForecastScreen() {
             ))}
           </View>
 
-          <Box pad={0} style={{ marginTop: 26 }}>
+          <Press label="Log a surf at this beach" onPress={() => { fx.select(); s.go('log'); }} style={{ marginTop: 22 }}>
+            <Box bg={C.sun} pad={12}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <Icon name="log" size={28} color={C.ink} />
+                <View style={{ flex: 1 }}>
+                  <T px size={10}>SURFED HERE?</T>
+                  <T size={21} color={C.ink} style={{ marginTop: 4 }}>Log the session in your surf journal.</T>
+                </View>
+                <T px size={14} color={C.ink}>+</T>
+              </View>
+            </Box>
+          </Press>
+
+          <Box pad={0} style={{ marginTop: 22 }}>
             <Press label="Can I trust this?" onPress={() => { fx.tap(); ease(); setTrustOpen(!trustOpen); }}
               style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14 }}>
               <T px size={10}>CAN I TRUST THIS?</T>
